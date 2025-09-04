@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "MultiEdit",
+      "Glob",
+      "Grep",
+      "TodoWrite",
+      "NotebookEdit",
+      "WebSearch",
+      "WebFetch(domain:phaser.io)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
