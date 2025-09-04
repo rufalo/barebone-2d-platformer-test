@@ -21,7 +21,7 @@ class Player {
                 sprintEnabled: true
             },
             versions: {
-                movementSystem: 'v1' // 'v1' = traditional, 'v2' = boost-integrated
+                movementSystem: 'v2' // 'v1' = traditional, 'v2' = boost-integrated
             }
         };
 
@@ -41,7 +41,7 @@ class Player {
             },
             v2: {
                 name: "Boost-Integrated Movement", 
-                description: "Tap to boost + integrated dash with air dash",
+                description: "Tap to boost + integrated dash with air dash + ground slide",
                 dash: {
                     speed: { value: 500, min: 200, max: 800 },
                     duration: { value: 200, min: 50, max: 400 },
@@ -55,6 +55,10 @@ class Player {
                     duration: { value: 350, min: 100, max: 800 },
                     jumpWindow: { value: 200, min: 50, max: 500 },
                     airMomentumDuration: { value: 300, min: 100, max: 1000 }
+                },
+                slide: {
+                    duration: { value: 800, min: 200, max: 1500 },
+                    friction: { value: 0.95, min: 0.8, max: 0.99 }
                 }
             }
         };
@@ -65,8 +69,11 @@ class Player {
         this.canDoubleJump = true;
         this.isDashing = false;
         this.isCrouching = false;
+        this.isSliding = false;
         this.isSprinting = false;
+        this.crouchVisualApplied = false;
         this.dashTimer = 0;
+        this.slideTimer = 0;
         this.coyoteTimer = 0;
         this.jumpBuffer = 0;
         
@@ -84,6 +91,11 @@ class Player {
         this.boostTimer = 0;
         this.boostDirection = 0;
         this.lastBoostTime = 0;
+        
+        // Ground slide system
+        this.slideDirection = 0;
+        this.slideSpeed = 250; // Base slide speed
+        
         
         // Sprint v2 extends boost duration when jumping during boost
         
@@ -106,6 +118,11 @@ class Player {
     
     getCurrentMovementSystem() {
         return this.movementSystems[this.config.versions.movementSystem];
+    }
+    
+    getCurrentSlideConfig() {
+        const system = this.movementSystems[this.config.versions.movementSystem];
+        return system.slide || { duration: { value: 800 }, friction: { value: 0.95 } };
     }
     
     setupGroundDetection() {
@@ -133,7 +150,17 @@ class Player {
             this.boostTimer -= delta;
             if (this.boostTimer <= 0) {
                 this.isBoosting = false;
-                this.sprite.setTint(0xffffff);
+                // Don't reset tint here - let visual feedback system handle it
+            }
+        }
+        
+        // Handle slide timer
+        if (this.isSliding) {
+            this.slideTimer -= delta;
+            if (this.slideTimer <= 0) {
+                this.isSliding = false;
+                this.slideDirection = 0;
+                this.resetSlideState();
             }
         }
         
@@ -192,15 +219,15 @@ class Player {
     }
     
     handleInput() {
-        if (this.isDashing) {
-            return; // Don't allow other inputs during dash
+        // Jumping is allowed during slide for slide-to-jump
+        this.handleJumping();
+        
+        if (this.isDashing || this.isSliding) {
+            return; // Don't allow movement/crouch/dash/shoot during dash or slide
         }
         
         // Horizontal movement
         this.handleHorizontalMovement();
-        
-        // Jumping
-        this.handleJumping();
         
         // Crouching
         this.handleCrouching();
@@ -262,8 +289,17 @@ class Player {
             }
         }
         
-        // Reduce speed when crouching
-        if (this.isCrouching) {
+        // Handle sliding movement
+        if (this.isSliding) {
+            // Override normal movement during slide
+            this.sprite.setVelocityX(this.slideSpeed * this.slideDirection);
+            // Update visual feedback and return early
+            this.updateMovementVisuals();
+            return;
+        }
+        
+        // Reduce speed when crouching (but not sliding)
+        if (this.isCrouching && !this.isSliding) {
             currentSpeed *= 0.5;
         }
         
@@ -288,16 +324,8 @@ class Player {
             }
         }
         
-        // Visual feedback for sprint/boost state  
-        if (this.isBoosting && !this.isDashing) {
-            this.sprite.setTint(0x00FF99); // Green when boosting (v2)
-        } else if (this.isSprinting && !this.isDashing) {
-            this.sprite.setTint(0xFFFF99); // Light yellow when sprinting (v1)
-        } else if (!this.canDash && !this.isDashing) {
-            this.sprite.setTint(0x999999); // Gray when dash is on cooldown
-        } else if (!this.isDashing) {
-            this.sprite.setTint(0xFFFFFF); // Normal color
-        }
+        // Update visual feedback
+        this.updateMovementVisuals();
         
         // Check for double-tap dash
         this.checkDoubleTapDash(leftPressed, rightPressed);
@@ -320,21 +348,45 @@ class Player {
                 this.jumpBuffer = 0;
                 this.coyoteTimer = 0;
                 
-                // Check for boost extension (boost-integrated movement system only)
-                if (this.config.versions.movementSystem === 'v2' && this.config.abilities.sprintEnabled) {
-                    // If jumping during an active boost, extend the boost timer with air momentum duration
+                // Handle slide-to-jump transition
+                if (this.isSliding) {
+                    // Maintain horizontal momentum from slide
+                    this.sprite.setVelocityX(this.slideSpeed * this.slideDirection);
+                    
+                    // End slide state
+                    this.isSliding = false;
+                    this.slideDirection = 0;
+                    this.resetSlideState();
+                    
+                    // If we were boost-sliding, extend boost for air momentum
+                    if (this.isBoosting && this.config.versions.movementSystem === 'v2') {
+                        const sprintConfig = this.getCurrentSprintConfig();
+                        this.boostTimer += sprintConfig.airMomentumDuration?.value || 300;
+                        
+                        // Visual effect for boost slide jump
+                        this.sprite.setTint(0x00FFFF); // Cyan for slide-jump boost extension
+                        this.scene.time.delayedCall(150, () => {
+                            if (!this.isDashing) {
+                                this.updateMovementVisuals();
+                            }
+                        });
+                    }
+                }
+                
+                // Check for regular boost extension (boost-integrated movement system only)
+                else if (this.config.versions.movementSystem === 'v2' && this.config.abilities.sprintEnabled) {
+                    // If jumping during an active boost (not from slide), extend the boost timer
                     if (this.isBoosting && this.boostDirection !== 0) {
                         const sprintConfig = this.getCurrentSprintConfig();
                         
                         // Extend the current boost timer by adding air momentum duration
-                        this.boostTimer += sprintConfig.airMomentumDuration?.value || 1000;
+                        this.boostTimer += sprintConfig.airMomentumDuration?.value || 300;
                         
                         // Visual effect for boost jump extension
                         this.sprite.setTint(0x00FFFF); // Cyan for extended boost jump
                         this.scene.time.delayedCall(150, () => {
                             if (!this.isDashing) {
-                                // Keep boost tint (green) if still boosting
-                                this.sprite.setTint(this.isBoosting ? 0x00FF99 : 0xffffff);
+                                this.updateMovementVisuals();
                             }
                         });
                     }
@@ -362,27 +414,160 @@ class Player {
     
     handleCrouching() {
         const crouchPressed = this.cursors.down.isDown || this.keys.S.isDown;
+        const leftPressed = this.cursors.left.isDown || this.keys.A.isDown;
+        const rightPressed = this.cursors.right.isDown || this.keys.D.isDown;
+        const crouchJustPressed = Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.keys.S);
+        
         
         if (crouchPressed && this.isGrounded) {
-            if (!this.isCrouching) {
-                this.isCrouching = true;
-                // Visual crouch effect - tint instead of scale to avoid physics issues
-                this.sprite.setTint(0xcccccc); // Gray tint to indicate crouching
-                // Adjust hitbox to be shorter but keep sprite at ground level
-                this.sprite.body.setSize(28, 20);
-                this.sprite.body.setOffset(2, 12); // Move hitbox down to keep feet on ground
+            // For v2 system: prioritize slide when moving with boost/sprint
+            if (this.config.versions.movementSystem === 'v2') {
+                if (crouchJustPressed && (leftPressed || rightPressed) && (this.isBoosting || this.isSprinting)) {
+                    console.log('Starting ground slide for v2 system');
+                    this.startGroundSlide(leftPressed ? -1 : 1);
+                } else if (!this.isCrouching && !this.isSliding) {
+                    console.log('Starting regular crouch for v2 system');
+                    this.isCrouching = true;
+                    if (!this.crouchVisualApplied) {
+                        this.applyCrouchState();
+                    }
+                }
+            } else {
+                // v1 system: regular crouch only
+                if (!this.isCrouching) {
+                    console.log('Starting regular crouch for v1 system');
+                    this.isCrouching = true;
+                    if (!this.crouchVisualApplied) {
+                        this.applyCrouchState();
+                    }
+                }
             }
         } else {
+            // Release crouch/slide
             if (this.isCrouching) {
+                console.log('Stopping crouch');
                 this.isCrouching = false;
-                // Only reset tint if not dashing or sprinting
-                if (!this.isDashing && !this.isSprinting) {
-                    this.sprite.setTint(0xffffff);
-                }
-                // Reset hitbox to normal
-                this.sprite.body.setSize(28, 32);
-                this.sprite.body.setOffset(2, 0);
+                this.resetCrouchState();
             }
+            if (this.isSliding) {
+                console.log('Stopping slide');
+                this.isSliding = false;
+                this.slideDirection = 0;
+                this.resetSlideState();
+            }
+        }
+    }
+    
+    applyCrouchState() {
+        if (this.crouchVisualApplied) return; // Prevent multiple applications
+        
+        // Scale down to half height and move down to keep bottom anchored
+        this.sprite.setScale(1, 0.5); // Keep width, halve height
+        
+        // Move down by quarter of original height to keep bottom anchored
+        // Original height is 32px, half height is 16px, so move down by 8px
+        this.sprite.y += 8;
+        
+        this.sprite.setTint(0xFF0000); // Red tint to see the change clearly
+        
+        this.crouchVisualApplied = true;
+        console.log('Applied crouch state - scaled to 0.5 height and repositioned');
+    }
+    
+    resetCrouchState() {
+        if (!this.crouchVisualApplied) return; // Prevent multiple resets
+        
+        // Scale back to normal and move up to restore original position
+        this.sprite.setScale(1, 1); // Back to normal size
+        
+        // Move up by quarter of original height to restore bottom position
+        // We moved down by 8px when crouching, so move back up by 8px
+        this.sprite.y -= 8;
+        
+        this.sprite.setTint(0xFFFFFF); // Back to normal color
+        
+        this.crouchVisualApplied = false;
+        console.log('Reset crouch state - scaled back to normal and repositioned');
+    }
+    
+    applySlideState() {
+        // Same scaling as crouch but with slide-specific visual feedback
+        this.sprite.setScale(1, 0.5); // Keep width, halve height
+        this.sprite.y += 8; // Move down to keep bottom anchored
+        
+        // Slide-specific color (orange to distinguish from crouch)
+        if (this.isBoosting) {
+            this.sprite.setTint(0xFF8C00); // Dark orange for boost slide
+        } else {
+            this.sprite.setTint(0xFFA500); // Orange for regular slide
+        }
+        
+        console.log('Applied slide state - scaled and colored for sliding');
+    }
+    
+    resetSlideState() {
+        // Reset scale and position (same as crouch reset)
+        this.sprite.setScale(1, 1);
+        this.sprite.y -= 8;
+        
+        console.log('Reset slide state - scaled back to normal');
+    }
+    
+    startGroundSlide(direction) {
+        if (this.isDashing || this.isSliding) return; // Can't slide while dashing or already sliding
+        
+        // Ground slide acts like a dash in crouch state
+        this.isSliding = true;
+        this.slideDirection = direction;
+        this.slideTimer = this.getCurrentSlideConfig().duration.value; // 800ms default
+        
+        // Apply slide visual state (crouched appearance)
+        this.applySlideState();
+        
+        // Determine slide speed based on current movement state
+        let slideSpeed;
+        if (this.isBoosting) {
+            slideSpeed = this.getCurrentSprintConfig().speed?.value || 400;
+        } else if (this.isSprinting) {
+            slideSpeed = this.getCurrentSprintConfig().speed?.value || 320;
+        } else {
+            slideSpeed = 250; // Default slide speed
+        }
+        
+        // Apply immediate horizontal velocity (like a dash)
+        this.sprite.setVelocityX(slideSpeed * direction);
+        this.sprite.setVelocityY(0); // Stop vertical movement during slide
+        
+        // Update facing direction
+        this.facingRight = direction > 0;
+        this.sprite.setFlipX(!this.facingRight);
+        
+        console.log(`Ground slide started: speed=${slideSpeed}, direction=${direction}, duration=${this.slideTimer}`);
+    }
+    
+    updateMovementVisuals() {
+        // Priority order for visual feedback (highest priority first)
+        if (this.isDashing) {
+            // Dash colors handled in performDash/performAirDash methods
+            return;
+        } else if (this.isSliding) {
+            // Slide color - orange to distinguish from other states
+            if (this.isBoosting) {
+                this.sprite.setTint(0xFF8C00); // Dark orange for boost slide
+            } else {
+                this.sprite.setTint(0xFFA500); // Orange for regular slide
+            }
+        } else if (this.isCrouching && this.crouchVisualApplied) {
+            // Don't override the crouch color set in applyCrouchState
+            return;
+        } else if (this.isBoosting) {
+            this.sprite.setTint(0x00FF99); // Green when boosting (v2)
+        } else if (this.isSprinting) {
+            this.sprite.setTint(0xFFFF99); // Light yellow when sprinting (v1)
+        } else if (!this.canDash) {
+            this.sprite.setTint(0x999999); // Gray when dash is on cooldown
+        } else {
+            this.sprite.setTint(0xFFFFFF); // Normal color
         }
     }
     

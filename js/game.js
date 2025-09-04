@@ -9,6 +9,13 @@ class GameScene extends Phaser.Scene {
             .fillStyle(0x4A90E2)
             .fillRect(0, 0, 32, 32)
             .generateTexture('player', 32, 32);
+            
+        // Create crouched player texture (shorter rectangle)
+        this.add.graphics()
+            .fillStyle(0x4A90E2)
+            .fillRect(0, 0, 32, 16)  // Half height for crouched state
+            .generateTexture('player_crouch', 32, 16);
+            
 
         this.add.graphics()
             .fillStyle(0x8B4513)
