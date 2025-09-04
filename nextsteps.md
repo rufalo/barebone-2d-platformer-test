@@ -2,27 +2,6 @@
 
 ## Immediate Priority Features
 
-### Enhanced Crouch & Ground Slide System
-
-#### Current Issues with Crouch:
-- Just changes hitbox size and applies gray tint
-- No momentum or interesting mechanics
-- Feels static and limited
-
-#### Better Crouch System Ideas:
-- **Slide transition**: Crouch while moving → slide with momentum
-- **Slide duration**: Time-based slide that gradually slows down
-- **Slide jump**: Jump during slide for low-profile movement
-- **Slide dash**: Dash while sliding for extended distance
-- **Surface interaction**: Slide under obstacles, through tight spaces
-- **Speed mechanics**: Slide faster on slopes, slower uphill
-
-#### Ground Slide Mechanics:
-- **Momentum-based**: Inherit current movement speed when initiating slide
-- **Friction system**: Gradual slowdown with configurable friction values
-- **Direction control**: Limited steering while sliding
-- **Slide boost**: Possible integration with sprint v2 system
-- **Visual feedback**: Particle trail, different sprite animation
 
 ### Platform System Improvements
 
@@ -99,16 +78,13 @@
 
 ## Integration Notes
 
-Both slide and platform systems would integrate well with the existing movement v1/v2 framework:
+The platform system improvements would integrate well with the existing movement v1/v2 framework:
 
-- **Slide system** could have different behaviors per movement system
 - **Improved platforms** would make all movement feel more reliable
-- **Slide mechanics** could pair really well with the boost system for extended momentum gameplay
+- **Platform trigger zones** would work seamlessly with current dash/slide mechanics
 
 ## Recommended Implementation Order
 
 1. **Platform trigger zones** - Improves fundamental movement reliability
-2. **Ground slide system** - Adds significant gameplay depth
-3. **Enhanced crouch mechanics** - Polish existing systems
-4. **Visual feedback improvements** - Make new systems feel great
-5. **Advanced platform types** - Expand level design possibilities
+2. **Visual feedback improvements** - Make existing systems feel great
+3. **Advanced platform types** - Expand level design possibilities

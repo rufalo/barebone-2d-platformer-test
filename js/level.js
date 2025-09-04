@@ -7,6 +7,12 @@ class Level {
             immovable: true
         });
         
+        // Trigger zones for platform detection
+        this.platformTriggers = scene.physics.add.group({
+            allowGravity: false,
+            immovable: true
+        });
+        
         this.createLevel();
     }
     
@@ -71,43 +77,52 @@ class Level {
         platform.speed = Math.abs(speed);
         platform.direction = 1; // 1 for right, -1 for left
         
-        // Add to movingPlatforms group (dynamic physics group)
+        // Create trigger zone on top of platform for "riding" detection
+        const topTrigger = this.scene.physics.add.sprite(startX, startY - 8, 'platform');
+        topTrigger.body.allowGravity = false;
+        topTrigger.body.immovable = true;
+        
+        // Make trigger visible for debugging with distinct colors
+        topTrigger.setVisible(true);
+        topTrigger.setTint(0x00FF00); // Green for trigger zone (debug)
+        topTrigger.setAlpha(0.5); // Semi-transparent so we can see through it
+        topTrigger.body.setSize(64, 4); // Thin trigger zone on top
+        
+        // Store reference to parent platform
+        topTrigger.parentPlatform = platform;
+        platform.topTrigger = topTrigger;
+        
+        // Add to groups
         this.movingPlatforms.add(platform);
+        this.platformTriggers.add(topTrigger);
+        
         
         // Store update function for movement
         platform.updateMovement = () => {
-            if (platform.active && platform.body) {
+            if (platform.active && platform.body && topTrigger.active) {
                 const oldX = platform.x;
                 
                 // Move platform manually (not using velocity to avoid physics conflicts)
                 platform.x += platform.direction * platform.speed * (this.scene.game.loop.delta / 1000);
                 
+                // Move trigger zone with platform
+                topTrigger.x = platform.x;
+                
                 // Check boundaries and reverse direction
                 if (platform.x <= Math.min(startX, endX)) {
                     platform.x = Math.min(startX, endX);
+                    topTrigger.x = platform.x;
                     platform.direction = 1;
                 } else if (platform.x >= Math.max(startX, endX)) {
                     platform.x = Math.max(startX, endX);
+                    topTrigger.x = platform.x;
                     platform.direction = -1;
                 }
                 
-                // Move player with platform if they're standing on it
+                // Move player with platform using trigger-based detection
                 const deltaX = platform.x - oldX;
-                if (deltaX !== 0 && this.scene.player && this.scene.player.sprite.body) {
-                    const playerBounds = this.scene.player.sprite.getBounds();
-                    const platformBounds = platform.getBounds();
-                    
-                    // Check if player is standing on THIS specific platform
-                    // Player must be: grounded, horizontally overlapping, and positioned above platform
-                    const isGrounded = this.scene.player.sprite.body.touching.down;
-                    const horizontalOverlap = playerBounds.right > platformBounds.left && 
-                                             playerBounds.left < platformBounds.right;
-                    const isAbovePlatform = playerBounds.bottom >= platformBounds.top - 5 && 
-                                           playerBounds.bottom <= platformBounds.top + 10;
-                    
-                    if (isGrounded && horizontalOverlap && isAbovePlatform) {
-                        this.scene.player.sprite.x += deltaX;
-                    }
+                if (deltaX !== 0 && platform.playerOnTop) {
+                    this.scene.player.sprite.x += deltaX;
                 }
             }
         };
@@ -119,6 +134,39 @@ class Level {
     setupPlayerCollisions(player) {
         this.scene.physics.add.collider(player.sprite, this.platforms);
         this.scene.physics.add.collider(player.sprite, this.movingPlatforms);
+        
+        // Note: Trigger detection is handled manually in the update() method
+        // because Phaser's overlap callback doesn't work reliably for continuous detection
+        
+    }
+    
+    // Update method to handle trigger exit detection and platform movement
+    update() {
+        // Update moving platforms
+        this.movingPlatforms.children.entries.forEach(platform => {
+            if (platform.updateMovement) {
+                platform.updateMovement();
+            }
+        });
+        
+        // Check overlap status for all platform triggers
+        this.movingPlatforms.children.entries.forEach(platform => {
+            if (platform.topTrigger) {
+                const isOverlapping = this.scene.physics.overlap(this.scene.player.sprite, platform.topTrigger);
+                
+                if (isOverlapping && !platform.playerOnTop) {
+                    // Player just entered trigger
+                    platform.playerOnTop = true;
+                    platform.topTrigger.setTint(0xFF0000); // Red when triggered
+                    platform.topTrigger.setAlpha(0.8);
+                } else if (!isOverlapping && platform.playerOnTop) {
+                    // Player just left trigger
+                    platform.playerOnTop = false;
+                    platform.topTrigger.setTint(0x00FF00); // Green when not triggered
+                    platform.topTrigger.setAlpha(0.5);
+                }
+            }
+        });
     }
     
     // Method to create additional platforms dynamically

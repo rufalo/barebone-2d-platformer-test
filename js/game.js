@@ -140,12 +140,8 @@ class GameScene extends Phaser.Scene {
             }
         });
         
-        // Update moving platforms
-        this.level.movingPlatforms.children.entries.forEach(platform => {
-            if (platform.active && platform.updateMovement) {
-                platform.updateMovement();
-            }
-        });
+        // Update level (includes moving platforms and triggers)
+        this.level.update();
     }
     
     createBullet(x, y, direction) {
