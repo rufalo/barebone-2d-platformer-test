@@ -5,12 +5,54 @@ class Player {
         this.sprite.setCollideWorldBounds(true);
         this.sprite.setBounce(0.1);
         
-        // Player properties
-        this.speed = 140;
-        this.sprintSpeed = 320;
-        this.jumpVelocity = -450;
-        this.dashSpeed = 600;
-        this.dashDuration = 300;
+        // Configurable player properties with min/max values
+        this.config = {
+            movement: {
+                speed: { value: 140, min: 50, max: 300 }
+            },
+            jump: {
+                velocity: { value: 450, min: 200, max: 700 },
+                coyoteTime: { value: 100, min: 50, max: 300 },
+                bufferTime: { value: 100, min: 50, max: 300 }
+            },
+            abilities: {
+                doubleJumpEnabled: true,
+                dashEnabled: true,
+                sprintEnabled: true
+            },
+            versions: {
+                dashVersion: 'v1', // 'v1' or 'v2'
+                sprintVersion: 'v1' // 'v1' or 'v2'
+            }
+        };
+
+        // Versioned ability configurations
+        this.abilityVersions = {
+            dash: {
+                v1: {
+                    speed: { value: 600, min: 300, max: 1000 },
+                    duration: { value: 300, min: 100, max: 500 },
+                    cooldown: { value: 1000, min: 200, max: 2000 },
+                    name: "Dash v1 (Original)"
+                },
+                v2: {
+                    speed: { value: 500, min: 200, max: 800 },
+                    duration: { value: 200, min: 50, max: 400 },
+                    cooldown: { value: 800, min: 100, max: 1500 },
+                    name: "Dash v2 (Experimental)"
+                }
+            },
+            sprint: {
+                v1: {
+                    speed: { value: 320, min: 200, max: 500 },
+                    name: "Sprint v1 (Original)"
+                },
+                v2: {
+                    speed: { value: 280, min: 150, max: 450 },
+                    name: "Sprint v2 (Experimental)"
+                }
+            }
+        };
         
         // State tracking
         this.facingRight = true;
@@ -20,9 +62,7 @@ class Player {
         this.isCrouching = false;
         this.isSprinting = false;
         this.dashTimer = 0;
-        this.coyoteTime = 100;
         this.coyoteTimer = 0;
-        this.jumpBufferTime = 100;
         this.jumpBuffer = 0;
         
         // Double-tap dash tracking
@@ -31,7 +71,6 @@ class Player {
         this.doubleTapWindow = 300;
         
         // Dash cooldown
-        this.dashCooldown = 500; // 500ms cooldown
         this.lastDashTime = 0;
         this.canDash = true;
         
@@ -41,6 +80,15 @@ class Player {
         
         // Create ground detection
         this.setupGroundDetection();
+    }
+
+    // Helper methods to get current version properties
+    getCurrentDashConfig() {
+        return this.abilityVersions.dash[this.config.versions.dashVersion];
+    }
+
+    getCurrentSprintConfig() {
+        return this.abilityVersions.sprint[this.config.versions.sprintVersion];
     }
     
     setupGroundDetection() {
@@ -74,7 +122,7 @@ class Player {
         }
         
         // Handle dash cooldown
-        if (!this.canDash && this.scene.time.now - this.lastDashTime >= this.dashCooldown) {
+        if (!this.canDash && this.scene.time.now - this.lastDashTime >= this.getCurrentDashConfig().cooldown.value) {
             this.canDash = true;
         }
         
@@ -88,9 +136,9 @@ class Player {
         
         if (this.isGrounded) {
             this.resetAbilities('ground');
-            this.coyoteTimer = this.coyoteTime;
+            this.coyoteTimer = this.config.jump.coyoteTime.value;
         } else if (wasGrounded && !this.isGrounded) {
-            this.coyoteTimer = this.coyoteTime;
+            this.coyoteTimer = this.config.jump.coyoteTime.value;
         }
     }
     
@@ -98,8 +146,10 @@ class Player {
         // Reset double jump
         this.canDoubleJump = true;
         
-        // Reset dash cooldown
-        this.canDash = true;
+        // Only reset dash cooldown if enough time has passed or from entity
+        if (source === 'entity' || this.scene.time.now - this.lastDashTime >= this.getCurrentDashConfig().cooldown.value) {
+            this.canDash = true;
+        }
         
         // Optional: Add visual feedback for ability reset
         if (source === 'entity') {
@@ -142,7 +192,8 @@ class Player {
         // Sprint handling (no cooldown)
         this.isSprinting = sprintPressed && (leftPressed || rightPressed);
         
-        let currentSpeed = this.isSprinting ? this.sprintSpeed : this.speed;
+        let currentSpeed = this.isSprinting && this.config.abilities.sprintEnabled ? 
+            this.getCurrentSprintConfig().speed.value : this.config.movement.speed.value;
         
         // Reduce speed when crouching
         if (this.isCrouching) {
@@ -186,19 +237,19 @@ class Player {
                                Phaser.Input.Keyboard.JustDown(this.keys.SPACE);
         
         if (jumpJustPressed) {
-            this.jumpBuffer = this.jumpBufferTime;
+            this.jumpBuffer = this.config.jump.bufferTime.value;
         }
         
         if (this.jumpBuffer > 0) {
             // Regular jump (grounded or coyote time)
             if (this.isGrounded || this.coyoteTimer > 0) {
-                this.sprite.setVelocityY(this.jumpVelocity);
+                this.sprite.setVelocityY(-this.config.jump.velocity.value);
                 this.jumpBuffer = 0;
                 this.coyoteTimer = 0;
             }
             // Double jump
-            else if (this.canDoubleJump && !this.isGrounded) {
-                this.sprite.setVelocityY(this.jumpVelocity * 1.1);
+            else if (this.config.abilities.doubleJumpEnabled && this.canDoubleJump && !this.isGrounded) {
+                this.sprite.setVelocityY(-this.config.jump.velocity.value * 1.1);
                 this.canDoubleJump = false;
                 this.jumpBuffer = 0;
                 
@@ -222,14 +273,20 @@ class Player {
         if (crouchPressed && this.isGrounded) {
             if (!this.isCrouching) {
                 this.isCrouching = true;
-                this.sprite.setScale(1, 0.7);
-                this.sprite.body.setSize(28, 22);
-                this.sprite.body.setOffset(2, 10);
+                // Visual crouch effect - tint instead of scale to avoid physics issues
+                this.sprite.setTint(0xcccccc); // Gray tint to indicate crouching
+                // Adjust hitbox to be shorter but keep sprite at ground level
+                this.sprite.body.setSize(28, 20);
+                this.sprite.body.setOffset(2, 12); // Move hitbox down to keep feet on ground
             }
         } else {
             if (this.isCrouching) {
                 this.isCrouching = false;
-                this.sprite.setScale(1, 1);
+                // Only reset tint if not dashing or sprinting
+                if (!this.isDashing && !this.isSprinting) {
+                    this.sprite.setTint(0xffffff);
+                }
+                // Reset hitbox to normal
                 this.sprite.body.setSize(28, 32);
                 this.sprite.body.setOffset(2, 0);
             }
@@ -237,6 +294,8 @@ class Player {
     }
     
     handleDashing() {
+        if (!this.config.abilities.dashEnabled) return;
+        
         const dashPressed = Phaser.Input.Keyboard.JustDown(this.keys.X);
         
         if (dashPressed && !this.isDashing && this.canDash) {
@@ -245,13 +304,14 @@ class Player {
     }
     
     performDash(direction) {
-        if (this.isDashing || !this.canDash) return;
+        if (this.isDashing || !this.canDash || !this.config.abilities.dashEnabled) return;
         
-        this.sprite.setVelocityX(this.dashSpeed * direction);
+        const dashConfig = this.getCurrentDashConfig();
+        this.sprite.setVelocityX(dashConfig.speed.value * direction);
         this.sprite.setVelocityY(0); // Stop vertical movement during dash
         
         this.isDashing = true;
-        this.dashTimer = this.dashDuration;
+        this.dashTimer = dashConfig.duration.value;
         
         // Start dash cooldown
         this.canDash = false;
@@ -266,6 +326,8 @@ class Player {
     }
     
     checkDoubleTapDash(leftPressed, rightPressed) {
+        if (!this.config.abilities.dashEnabled) return;
+        
         const currentTime = this.scene.time.now;
         
         // Check for left double-tap

@@ -7,21 +7,112 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div id="game-container">
-        <h1>Basic Platformer Character Test</h1>
-        <div id="game"></div>
-        <div id="controls">
-            <p><strong>Controls:</strong></p>
-            <p>Arrow Keys / WASD - Move</p>
-            <p>Space - Jump</p>
-            <p>Shift - Sprint</p>
-            <p>X - Dash</p>
-            <p>S/Down - Crouch</p>
-            <p>Z - Shoot</p>
+    <div class="main-layout">
+        <div id="debug-panel">
+            <h3>Debug Controls</h3>
+            
+            <div class="debug-section">
+                <h4>Abilities</h4>
+                <label>
+                    <input type="checkbox" id="doubleJumpEnabled" checked>
+                    Double Jump
+                </label>
+                <label>
+                    <input type="checkbox" id="dashEnabled" checked>
+                    Dash
+                </label>
+                <label>
+                    <input type="checkbox" id="sprintEnabled" checked>
+                    Sprint
+                </label>
+            </div>
+            
+            <div class="debug-section">
+                <h4>Ability Versions</h4>
+                <div class="version-control">
+                    <label>Dash Version:</label>
+                    <select id="dashVersionSelect">
+                        <option value="v1">Dash v1 (Original)</option>
+                        <option value="v2">Dash v2 (Experimental)</option>
+                    </select>
+                </div>
+                <div class="version-control">
+                    <label>Sprint Version:</label>
+                    <select id="sprintVersionSelect">
+                        <option value="v1">Sprint v1 (Original)</option>
+                        <option value="v2">Sprint v2 (Experimental)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h4>Movement Properties</h4>
+                <div class="property-control">
+                    <label>Speed: <span id="speedValue">140</span></label>
+                    <input type="range" id="speedSlider" min="50" max="300" value="140">
+                </div>
+            </div>
+            
+            <div class="debug-section" id="sprintSection">
+                <h4>Sprint Properties <span id="sprintVersionLabel">(v1)</span></h4>
+                <div class="property-control">
+                    <label>Sprint Speed: <span id="sprintSpeedValue">320</span></label>
+                    <input type="range" id="sprintSpeedSlider" min="200" max="500" value="320">
+                </div>
+            </div>
+            
+            <div class="debug-section" id="dashSection">
+                <h4>Dash Properties <span id="dashVersionLabel">(v1)</span></h4>
+                <div class="property-control">
+                    <label>Dash Speed: <span id="dashSpeedValue">600</span></label>
+                    <input type="range" id="dashSpeedSlider" min="300" max="1000" value="600">
+                </div>
+                <div class="property-control">
+                    <label>Dash Duration: <span id="dashDurationValue">300</span></label>
+                    <input type="range" id="dashDurationSlider" min="100" max="500" value="300">
+                </div>
+                <div class="property-control">
+                    <label>Dash Cooldown: <span id="dashCooldownValue">1000</span></label>
+                    <input type="range" id="dashCooldownSlider" min="200" max="2000" value="1000">
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h4>Jump Properties</h4>
+                <div class="property-control">
+                    <label>Jump Velocity: <span id="jumpVelocityValue">450</span></label>
+                    <input type="range" id="jumpVelocitySlider" min="200" max="700" value="450">
+                </div>
+                <div class="property-control">
+                    <label>Coyote Time: <span id="coyoteTimeValue">100</span></label>
+                    <input type="range" id="coyoteTimeSlider" min="50" max="300" value="100">
+                </div>
+                <div class="property-control">
+                    <label>Jump Buffer: <span id="jumpBufferValue">100</span></label>
+                    <input type="range" id="jumpBufferSlider" min="50" max="300" value="100">
+                </div>
+            </div>
+            
+            <button id="resetDefaults">Reset to Defaults</button>
+        </div>
+        
+        <div id="game-container">
+            <h1>Basic Platformer Character Test</h1>
+            <div id="game"></div>
+            <div id="controls">
+                <p><strong>Controls:</strong></p>
+                <p>Arrow Keys / WASD - Move</p>
+                <p>Space - Jump</p>
+                <p>Shift - Sprint</p>
+                <p>X - Dash</p>
+                <p>S/Down - Crouch</p>
+                <p>Z - Shoot</p>
+            </div>
         </div>
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    <script src="js/debug.js"></script>
     <script src="js/player.js"></script>
     <script src="js/level.js"></script>
     <script src="js/target.js"></script>

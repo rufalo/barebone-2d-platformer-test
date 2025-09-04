@@ -46,6 +46,11 @@ class GameScene extends Phaser.Scene {
         // Create player
         this.player = new Player(this, 100, 400);
         
+        // Connect debug menu to player
+        if (window.debugMenu) {
+            window.debugMenu.setPlayer(this.player);
+        }
+        
         // Create targets
         this.targets = this.physics.add.group();
         new Target(this, 800, 300, this.targets);
