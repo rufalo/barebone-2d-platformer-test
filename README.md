@@ -2,6 +2,10 @@
 
 A 2D platformer character test built with HTML5 and Phaser 3, focusing on character movement mechanics, platforms, shooting, and enemy AI systems.
 
+## 🎮 **[PLAY THE GAME HERE](https://rufalo.github.io/barebone-2d-platformer-test/)**
+
+*Click the link above to play the game directly in your browser - no downloads required!*
+
 ## 🎮 Game Features
 
 ### Player Mechanics
