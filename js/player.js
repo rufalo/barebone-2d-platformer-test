@@ -39,7 +39,10 @@ class Player {
                     speed: { value: 500, min: 200, max: 800 },
                     duration: { value: 200, min: 50, max: 400 },
                     cooldown: { value: 800, min: 100, max: 1500 },
-                    name: "Dash v2 (Experimental)"
+                    boostDuration: { value: 300, min: 100, max: 600 },
+                    airDashSpeed: { value: 400, min: 200, max: 700 },
+                    airDashDuration: { value: 150, min: 50, max: 300 },
+                    name: "Dash v2 (Boost Integration + Air Dash)"
                 }
             },
             sprint: {
@@ -49,7 +52,7 @@ class Player {
                 },
                 v2: {
                     speed: { value: 400, min: 250, max: 600 },
-                    duration: { value: 300, min: 100, max: 800 },
+                    duration: { value: 350, min: 100, max: 800 },
                     jumpWindow: { value: 200, min: 50, max: 500 },
                     airMomentumDuration: { value: 300, min: 100, max: 1000 },
                     name: "Sprint v2 (Tap to Boost)"
@@ -218,9 +221,27 @@ class Player {
                 // v1: Hold to sprint (original system)
                 this.isSprinting = sprintPressed && (leftPressed || rightPressed);
             } else if (this.config.versions.sprintVersion === 'v2') {
-                // v2: Tap to boost (Mega Man style)
-                if (sprintJustPressed && (leftPressed || rightPressed)) {
-                    this.performBoost(leftPressed ? -1 : 1);
+                // v2: Tap to boost (Mega Man style) - can activate while standing still
+                if (sprintJustPressed) {
+                    if (!this.isGrounded) {
+                        // In air: Sprint button triggers air dash (if dash v2 is enabled)
+                        if (this.config.versions.dashVersion === 'v2' && this.config.abilities.dashEnabled) {
+                            this.performAirDash(this.facingRight ? 1 : -1);
+                        }
+                    } else {
+                        // On ground: Normal boost behavior
+                        // Determine direction: use movement if pressing direction, otherwise use facing direction
+                        let direction = 0;
+                        if (leftPressed) {
+                            direction = -1;
+                        } else if (rightPressed) {
+                            direction = 1;
+                        } else {
+                            // Standing still - use current facing direction
+                            direction = this.facingRight ? 1 : -1;
+                        }
+                        this.performBoost(direction);
+                    }
                 }
                 // v2 doesn't use continuous sprint
                 this.isSprinting = false;
@@ -383,8 +404,7 @@ class Player {
         // Visual effect for boost
         this.sprite.setTint(0x00FF99); // Green tint for boost
         
-        // Apply immediate velocity boost
-        this.sprite.setVelocityX(sprintConfig.speed.value * direction);
+        // Don't apply velocity directly - let normal movement handling apply boost speed
     }
     
     handleDashing() {
@@ -401,18 +421,69 @@ class Player {
         if (this.isDashing || !this.canDash || !this.config.abilities.dashEnabled) return;
         
         const dashConfig = this.getCurrentDashConfig();
-        this.sprite.setVelocityX(dashConfig.speed.value * direction);
-        this.sprite.setVelocityY(0); // Stop vertical movement during dash
+        
+        if (this.config.versions.dashVersion === 'v1') {
+            // v1: Traditional dash - no boost integration
+            this.sprite.setVelocityX(dashConfig.speed.value * direction);
+            this.sprite.setVelocityY(0); // Stop vertical movement during dash
+            
+            this.isDashing = true;
+            this.dashTimer = dashConfig.duration.value;
+            
+            // Visual effect - red for traditional dash
+            this.sprite.setTint(0xff0000);
+        } else if (this.config.versions.dashVersion === 'v2') {
+            // v2: Dash with boost integration - initial velocity + boost state
+            this.sprite.setVelocityX(dashConfig.speed.value * direction);
+            this.sprite.setVelocityY(0); // Stop vertical movement during dash
+            
+            this.isDashing = true;
+            this.dashTimer = dashConfig.duration.value;
+            
+            // Activate boost state after dash for jump chaining
+            this.isBoosting = true;
+            this.boostTimer = dashConfig.boostDuration?.value || 300;
+            this.boostDirection = direction;
+            this.lastBoostTime = this.scene.time.now;
+            
+            // Visual effect - purple for boost-integrated dash
+            this.sprite.setTint(0x9400D3);
+        }
+        
+        // Common dash properties
+        this.canDash = false;
+        this.lastDashTime = this.scene.time.now;
+        
+        // Update facing direction
+        this.facingRight = direction > 0;
+        this.sprite.setFlipX(!this.facingRight);
+    }
+    
+    performAirDash(direction) {
+        if (this.isDashing || !this.canDash || !this.config.abilities.dashEnabled) return;
+        if (this.config.versions.dashVersion !== 'v2') return;
+        
+        const dashConfig = this.getCurrentDashConfig();
+        
+        // Air dash with boost integration
+        this.sprite.setVelocityX(dashConfig.airDashSpeed?.value || dashConfig.speed.value);
+        this.sprite.setVelocityY(this.sprite.body.velocity.y * 0.5); // Reduce vertical velocity but don't stop it
         
         this.isDashing = true;
-        this.dashTimer = dashConfig.duration.value;
+        this.dashTimer = dashConfig.airDashDuration?.value || dashConfig.duration.value;
+        
+        // Activate boost state for potential jump chaining when landing
+        this.isBoosting = true;
+        this.boostTimer = dashConfig.boostDuration?.value || 300;
+        this.boostDirection = direction;
+        this.lastBoostTime = this.scene.time.now;
         
         // Start dash cooldown
         this.canDash = false;
         this.lastDashTime = this.scene.time.now;
         
-        // Visual effect
-        this.sprite.setTint(0xff0000);
+        // Visual effect - cyan for air dash
+        this.sprite.setTint(0x00FFFF);
         
         // Update facing direction
         this.facingRight = direction > 0;

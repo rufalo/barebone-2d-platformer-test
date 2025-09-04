@@ -385,13 +385,25 @@ if (this.isBoosting && this.boostDirection !== 0) {
 - **Ground-Only Activation**: Yes
 - **Single Timer System**: Simplified from dual air/ground momentum
 
-## Final Status: ✅ FULLY REFINED
+## Integration with Dash v2 System
+
+### Issue 15: Dash v2 Boost Integration
+**Success:** Sprint v2 boost system successfully integrated with dash v2 implementation. Both systems now share the same boost state (`this.isBoosting`) for consistent jump chaining mechanics.
+
+**Integration Points:**
+- **Shared boost state**: Both sprint and dash v2 activate `isBoosting = true`
+- **Jump extension logic**: Works identically for both sprint boost and dash boost
+- **Visual feedback**: Green (sprint boost) + Purple/Cyan (dash variants) + Cyan (boost jump extensions)
+- **Air dash availability**: Sprint button in air triggers dash v2 air dash (sprint v2 ground-only)
+
+## Final Status: ✅ FULLY REFINED & INTEGRATED
 - Sprint v1: Hold-to-sprint system (original) working
 - Sprint v2: Tap-to-boost system with timer extension working
-- Ground-only boost activation prevents air spamming
-- Jump during boost extends timer by 300ms (configurable 100-1000ms)
+- Ground-only boost activation prevents air spamming (frees up sprint button for air dash)
+- Jump during boost extends timer by 350ms (increased from 300ms, configurable 100-1000ms) 
 - Single boost timer system (removed complex air momentum decay)
 - Real-time debug controls with automatic version-specific visibility
 - Visual feedback: Green boost → Cyan extension flash → Green boost continues
+- **Dash v2 integration**: Shared boost state enables consistent mechanics across movement abilities
 - All properties persist across browser sessions
-- Responsive 300ms extension duration (reduced from 1000ms)
+- Responsive boost duration timing optimized for gameplay flow
