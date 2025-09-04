@@ -10,7 +10,7 @@ class DebugMenu {
         this.player = player;
         // Store default configuration for reset functionality
         this.defaultConfig = JSON.parse(JSON.stringify(player.config));
-        this.defaultAbilityVersions = JSON.parse(JSON.stringify(player.abilityVersions));
+        this.defaultMovementSystems = JSON.parse(JSON.stringify(player.movementSystems));
         
         // Load saved config if it exists
         this.loadConfig();
@@ -40,6 +40,7 @@ class DebugMenu {
                 this.player.config.abilities.doubleJumpEnabled = e.target.checked;
                 this.saveConfig();
             }
+            e.target.blur(); // Remove focus to prevent keyboard interference
         });
 
         dashToggle.addEventListener('change', (e) => {
@@ -47,6 +48,7 @@ class DebugMenu {
                 this.player.config.abilities.dashEnabled = e.target.checked;
                 this.saveConfig();
             }
+            e.target.blur(); // Remove focus to prevent keyboard interference
         });
 
         sprintToggle.addEventListener('change', (e) => {
@@ -54,28 +56,19 @@ class DebugMenu {
                 this.player.config.abilities.sprintEnabled = e.target.checked;
                 this.saveConfig();
             }
+            e.target.blur(); // Remove focus to prevent keyboard interference
         });
 
-        // Version selectors
-        const dashVersionSelect = document.getElementById('dashVersionSelect');
-        const sprintVersionSelect = document.getElementById('sprintVersionSelect');
+        // Movement system selector
+        const movementSystemSelect = document.getElementById('movementSystemSelect');
 
-        dashVersionSelect.addEventListener('change', (e) => {
+        movementSystemSelect.addEventListener('change', (e) => {
             if (this.player) {
-                this.player.config.versions.dashVersion = e.target.value;
-                this.updateVersionLabels();
-                this.updateVersionProperties();
+                this.player.config.versions.movementSystem = e.target.value;
+                this.syncMovementSystemSliders();
                 this.saveConfig();
             }
-        });
-
-        sprintVersionSelect.addEventListener('change', (e) => {
-            if (this.player) {
-                this.player.config.versions.sprintVersion = e.target.value;
-                this.updateVersionLabels();
-                this.updateVersionProperties();
-                this.saveConfig();
-            }
+            e.target.blur(); // Remove focus to prevent keyboard interference
         });
     }
 
@@ -88,14 +81,14 @@ class DebugMenu {
         this.setupSlider('coyoteTime', 'jump.coyoteTime');
         this.setupSlider('jumpBuffer', 'jump.bufferTime');
         
-        // Versioned ability properties
-        this.setupVersionedSlider('sprintSpeed', 'sprint', 'speed');
-        this.setupVersionedSlider('sprintDuration', 'sprint', 'duration');
-        this.setupVersionedSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
-        this.setupVersionedSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
-        this.setupVersionedSlider('dashSpeed', 'dash', 'speed');
-        this.setupVersionedSlider('dashDuration', 'dash', 'duration');
-        this.setupVersionedSlider('dashCooldown', 'dash', 'cooldown');
+        // Movement system properties
+        this.setupMovementSystemSlider('sprintSpeed', 'sprint', 'speed');
+        this.setupMovementSystemSlider('sprintDuration', 'sprint', 'duration');
+        this.setupMovementSystemSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
+        this.setupMovementSystemSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
+        this.setupMovementSystemSlider('dashSpeed', 'dash', 'speed');
+        this.setupMovementSystemSlider('dashDuration', 'dash', 'duration');
+        this.setupMovementSystemSlider('dashCooldown', 'dash', 'cooldown');
     }
 
     setupSlider(elementId, configPath) {
@@ -113,9 +106,14 @@ class DebugMenu {
                 this.saveConfig();
             }
         });
+        
+        // Remove focus when slider interaction ends
+        slider.addEventListener('mouseup', (e) => {
+            e.target.blur();
+        });
     }
 
-    setupVersionedSlider(elementId, abilityType, property) {
+    setupMovementSystemSlider(elementId, abilityType, property) {
         const slider = document.getElementById(`${elementId}Slider`);
         const valueSpan = document.getElementById(`${elementId}Value`);
 
@@ -126,17 +124,25 @@ class DebugMenu {
             valueSpan.textContent = value;
             
             if (this.player) {
-                const currentVersion = this.player.config.versions[`${abilityType}Version`];
-                this.player.abilityVersions[abilityType][currentVersion][property].value = value;
-                this.saveConfig();
+                const currentSystem = this.player.config.versions.movementSystem;
+                if (this.player.movementSystems[currentSystem][abilityType][property]) {
+                    this.player.movementSystems[currentSystem][abilityType][property].value = value;
+                    this.saveConfig();
+                }
             }
+        });
+        
+        // Remove focus when slider interaction ends
+        slider.addEventListener('mouseup', (e) => {
+            e.target.blur();
         });
     }
 
     setupResetButton() {
         const resetButton = document.getElementById('resetDefaults');
-        resetButton.addEventListener('click', () => {
+        resetButton.addEventListener('click', (e) => {
             this.resetToDefaults();
+            e.target.blur(); // Remove focus to prevent keyboard interference
         });
     }
 
@@ -170,12 +176,8 @@ class DebugMenu {
         document.getElementById('dashEnabled').checked = this.player.config.abilities.dashEnabled;
         document.getElementById('sprintEnabled').checked = this.player.config.abilities.sprintEnabled;
 
-        // Sync version selectors
-        document.getElementById('dashVersionSelect').value = this.player.config.versions.dashVersion;
-        document.getElementById('sprintVersionSelect').value = this.player.config.versions.sprintVersion;
-
-        // Update version labels
-        this.updateVersionLabels();
+        // Sync movement system selector
+        document.getElementById('movementSystemSelect').value = this.player.config.versions.movementSystem;
 
         // Sync property sliders
         this.syncSlider('speed', 'movement.speed');
@@ -183,14 +185,8 @@ class DebugMenu {
         this.syncSlider('coyoteTime', 'jump.coyoteTime');
         this.syncSlider('jumpBuffer', 'jump.bufferTime');
 
-        // Sync versioned property sliders
-        this.syncVersionedSlider('sprintSpeed', 'sprint', 'speed');
-        this.syncVersionedSlider('sprintDuration', 'sprint', 'duration');
-        this.syncVersionedSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
-        this.syncVersionedSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
-        this.syncVersionedSlider('dashSpeed', 'dash', 'speed');
-        this.syncVersionedSlider('dashDuration', 'dash', 'duration');
-        this.syncVersionedSlider('dashCooldown', 'dash', 'cooldown');
+        // Sync movement system property sliders
+        this.syncMovementSystemSliders();
     }
 
     syncSlider(elementId, configPath) {
@@ -262,6 +258,55 @@ class DebugMenu {
         this.syncVersionedSlider('dashDuration', 'dash', 'duration');
         this.syncVersionedSlider('dashCooldown', 'dash', 'cooldown');
     }
+    
+    syncMovementSystemSliders() {
+        if (!this.player) return;
+        
+        const currentSystem = this.player.config.versions.movementSystem;
+        const system = this.player.movementSystems[currentSystem];
+        
+        // Sync sprint properties
+        this.syncMovementSystemSlider('sprintSpeed', 'sprint', 'speed');
+        this.syncMovementSystemSlider('sprintDuration', 'sprint', 'duration');
+        this.syncMovementSystemSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
+        this.syncMovementSystemSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
+        
+        // Sync dash properties  
+        this.syncMovementSystemSlider('dashSpeed', 'dash', 'speed');
+        this.syncMovementSystemSlider('dashDuration', 'dash', 'duration');
+        this.syncMovementSystemSlider('dashCooldown', 'dash', 'cooldown');
+    }
+    
+    syncMovementSystemSlider(elementId, abilityType, property) {
+        const slider = document.getElementById(`${elementId}Slider`);
+        const valueSpan = document.getElementById(`${elementId}Value`);
+        
+        if (!slider || !valueSpan) return;
+        
+        const currentSystem = this.player.config.versions.movementSystem;
+        const config = this.player.movementSystems[currentSystem][abilityType][property];
+        
+        // Check if property exists for this system
+        if (!config) {
+            // Hide the control if property doesn't exist
+            const control = slider.closest('.property-control');
+            if (control) {
+                control.style.display = 'none';
+            }
+            return;
+        }
+        
+        // Show the control if it exists
+        const control = slider.closest('.property-control');
+        if (control) {
+            control.style.display = 'block';
+        }
+        
+        slider.min = config.min;
+        slider.max = config.max;
+        slider.value = config.value;
+        valueSpan.textContent = config.value;
+    }
 
     saveConfig() {
         if (!this.player) return;
@@ -269,7 +314,7 @@ class DebugMenu {
         try {
             const configData = {
                 config: this.player.config,
-                abilityVersions: this.player.abilityVersions,
+                movementSystems: this.player.movementSystems,
                 timestamp: Date.now()
             };
             
@@ -294,8 +339,8 @@ class DebugMenu {
                 this.player.config = this.deepMerge(this.player.config, configData.config);
             }
             
-            if (configData.abilityVersions) {
-                this.player.abilityVersions = this.deepMerge(this.player.abilityVersions, configData.abilityVersions);
+            if (configData.movementSystems) {
+                this.player.movementSystems = this.deepMerge(this.player.movementSystems, configData.movementSystems);
             }
 
             console.log('Loaded saved debug configuration');
@@ -365,8 +410,8 @@ class DebugMenu {
         // Deep copy default config back to player
         this.player.config = JSON.parse(JSON.stringify(this.defaultConfig));
         
-        // Reset ability versions to defaults
-        this.player.abilityVersions = JSON.parse(JSON.stringify(this.defaultAbilityVersions));
+        // Reset movement systems to defaults
+        this.player.movementSystems = JSON.parse(JSON.stringify(this.defaultMovementSystems));
         
         // Clear saved data
         localStorage.removeItem(this.storageKey);

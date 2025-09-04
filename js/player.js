@@ -21,41 +21,40 @@ class Player {
                 sprintEnabled: true
             },
             versions: {
-                dashVersion: 'v1', // 'v1' or 'v2'
-                sprintVersion: 'v1' // 'v1' or 'v2'
+                movementSystem: 'v1' // 'v1' = traditional, 'v2' = boost-integrated
             }
         };
 
-        // Versioned ability configurations
-        this.abilityVersions = {
-            dash: {
-                v1: {
+        // Movement system configurations
+        this.movementSystems = {
+            v1: {
+                name: "Traditional Movement",
+                description: "Hold to sprint + traditional dash",
+                dash: {
                     speed: { value: 600, min: 300, max: 1000 },
                     duration: { value: 300, min: 100, max: 500 },
-                    cooldown: { value: 1000, min: 200, max: 2000 },
-                    name: "Dash v1 (Original)"
+                    cooldown: { value: 1000, min: 200, max: 2000 }
                 },
-                v2: {
+                sprint: {
+                    speed: { value: 320, min: 200, max: 500 }
+                }
+            },
+            v2: {
+                name: "Boost-Integrated Movement", 
+                description: "Tap to boost + integrated dash with air dash",
+                dash: {
                     speed: { value: 500, min: 200, max: 800 },
                     duration: { value: 200, min: 50, max: 400 },
                     cooldown: { value: 800, min: 100, max: 1500 },
                     boostDuration: { value: 300, min: 100, max: 600 },
                     airDashSpeed: { value: 400, min: 200, max: 700 },
-                    airDashDuration: { value: 150, min: 50, max: 300 },
-                    name: "Dash v2 (Boost Integration + Air Dash)"
-                }
-            },
-            sprint: {
-                v1: {
-                    speed: { value: 320, min: 200, max: 500 },
-                    name: "Sprint v1 (Hold to Sprint)"
+                    airDashDuration: { value: 150, min: 50, max: 300 }
                 },
-                v2: {
+                sprint: {
                     speed: { value: 400, min: 250, max: 600 },
                     duration: { value: 350, min: 100, max: 800 },
                     jumpWindow: { value: 200, min: 50, max: 500 },
-                    airMomentumDuration: { value: 300, min: 100, max: 1000 },
-                    name: "Sprint v2 (Tap to Boost)"
+                    airMomentumDuration: { value: 300, min: 100, max: 1000 }
                 }
             }
         };
@@ -98,11 +97,15 @@ class Player {
 
     // Helper methods to get current version properties
     getCurrentDashConfig() {
-        return this.abilityVersions.dash[this.config.versions.dashVersion];
+        return this.movementSystems[this.config.versions.movementSystem].dash;
     }
 
     getCurrentSprintConfig() {
-        return this.abilityVersions.sprint[this.config.versions.sprintVersion];
+        return this.movementSystems[this.config.versions.movementSystem].sprint;
+    }
+    
+    getCurrentMovementSystem() {
+        return this.movementSystems[this.config.versions.movementSystem];
     }
     
     setupGroundDetection() {
@@ -215,17 +218,17 @@ class Player {
         const sprintPressed = this.keys.SHIFT.isDown;
         const sprintJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.SHIFT);
         
-        // Handle different sprint versions
+        // Handle different movement systems
         if (this.config.abilities.sprintEnabled) {
-            if (this.config.versions.sprintVersion === 'v1') {
-                // v1: Hold to sprint (original system)
+            if (this.config.versions.movementSystem === 'v1') {
+                // Traditional: Hold to sprint
                 this.isSprinting = sprintPressed && (leftPressed || rightPressed);
-            } else if (this.config.versions.sprintVersion === 'v2') {
-                // v2: Tap to boost (Mega Man style) - can activate while standing still
+            } else if (this.config.versions.movementSystem === 'v2') {
+                // Boost-integrated: Tap to boost + air dash
                 if (sprintJustPressed) {
                     if (!this.isGrounded) {
-                        // In air: Sprint button triggers air dash (if dash v2 is enabled)
-                        if (this.config.versions.dashVersion === 'v2' && this.config.abilities.dashEnabled) {
+                        // In air: Sprint button triggers air dash
+                        if (this.config.abilities.dashEnabled) {
                             this.performAirDash(this.facingRight ? 1 : -1);
                         }
                     } else {
@@ -250,11 +253,11 @@ class Player {
         
         let currentSpeed = this.config.movement.speed.value;
         
-        // Apply sprint speed for v1 or boost speed for v2
+        // Apply sprint speed for movement systems
         if (this.config.abilities.sprintEnabled) {
-            if (this.config.versions.sprintVersion === 'v1' && this.isSprinting) {
+            if (this.config.versions.movementSystem === 'v1' && this.isSprinting) {
                 currentSpeed = this.getCurrentSprintConfig().speed.value;
-            } else if (this.config.versions.sprintVersion === 'v2' && this.isBoosting) {
+            } else if (this.config.versions.movementSystem === 'v2' && this.isBoosting) {
                 currentSpeed = this.getCurrentSprintConfig().speed.value;
             }
         }
@@ -317,8 +320,8 @@ class Player {
                 this.jumpBuffer = 0;
                 this.coyoteTimer = 0;
                 
-                // Check for boost extension (sprint v2 only)
-                if (this.config.versions.sprintVersion === 'v2' && this.config.abilities.sprintEnabled) {
+                // Check for boost extension (boost-integrated movement system only)
+                if (this.config.versions.movementSystem === 'v2' && this.config.abilities.sprintEnabled) {
                     // If jumping during an active boost, extend the boost timer with air momentum duration
                     if (this.isBoosting && this.boostDirection !== 0) {
                         const sprintConfig = this.getCurrentSprintConfig();
@@ -385,7 +388,7 @@ class Player {
     
     performBoost(direction) {
         if (this.isBoosting || !this.config.abilities.sprintEnabled) return;
-        if (this.config.versions.sprintVersion !== 'v2') return;
+        if (this.config.versions.movementSystem !== 'v2') return;
         if (!this.isGrounded) return; // Can only boost while grounded
         
         const sprintConfig = this.getCurrentSprintConfig();
@@ -422,8 +425,8 @@ class Player {
         
         const dashConfig = this.getCurrentDashConfig();
         
-        if (this.config.versions.dashVersion === 'v1') {
-            // v1: Traditional dash - no boost integration
+        if (this.config.versions.movementSystem === 'v1') {
+            // Traditional: Simple dash - no boost integration
             this.sprite.setVelocityX(dashConfig.speed.value * direction);
             this.sprite.setVelocityY(0); // Stop vertical movement during dash
             
@@ -432,8 +435,8 @@ class Player {
             
             // Visual effect - red for traditional dash
             this.sprite.setTint(0xff0000);
-        } else if (this.config.versions.dashVersion === 'v2') {
-            // v2: Dash with boost integration - initial velocity + boost state
+        } else if (this.config.versions.movementSystem === 'v2') {
+            // Boost-integrated: Dash with boost integration - initial velocity + boost state
             this.sprite.setVelocityX(dashConfig.speed.value * direction);
             this.sprite.setVelocityY(0); // Stop vertical movement during dash
             
@@ -461,7 +464,7 @@ class Player {
     
     performAirDash(direction) {
         if (this.isDashing || !this.canDash || !this.config.abilities.dashEnabled) return;
-        if (this.config.versions.dashVersion !== 'v2') return;
+        if (this.config.versions.movementSystem !== 'v2') return;
         
         const dashConfig = this.getCurrentDashConfig();
         

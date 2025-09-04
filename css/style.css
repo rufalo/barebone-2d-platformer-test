@@ -297,3 +297,18 @@ h1 {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* Remove focus indicators from debug elements to prevent keyboard interference */
+#debug-panel input,
+#debug-panel select,
+#debug-panel button {
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#debug-panel input:focus,
+#debug-panel select:focus,
+#debug-panel button:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3);
+}
