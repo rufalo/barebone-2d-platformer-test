@@ -63,7 +63,7 @@ class Level {
         const platform = this.scene.physics.add.sprite(startX, startY, 'platform');
         platform.body.allowGravity = false;
         platform.body.immovable = true;
-        platform.setTint(0x9932CC); // Purple to distinguish moving platforms
+        platform.setTint(0xFF4500); // Bright orange/red to clearly distinguish moving platforms
         
         // Store movement properties
         platform.startX = startX;
@@ -93,15 +93,19 @@ class Level {
                 
                 // Move player with platform if they're standing on it
                 const deltaX = platform.x - oldX;
-                if (deltaX !== 0 && this.scene.player && this.scene.player.sprite.body.touching.down) {
-                    // Check if player is overlapping with this platform using bounds
+                if (deltaX !== 0 && this.scene.player && this.scene.player.sprite.body) {
                     const playerBounds = this.scene.player.sprite.getBounds();
                     const platformBounds = platform.getBounds();
                     
-                    // Simple overlap check: player is above platform and horizontally overlapping
-                    if (playerBounds.bottom <= platformBounds.top + 10 && // Player feet near platform top
-                        playerBounds.right > platformBounds.left && // Horizontal overlap
-                        playerBounds.left < platformBounds.right) {
+                    // Check if player is standing on THIS specific platform
+                    // Player must be: grounded, horizontally overlapping, and positioned above platform
+                    const isGrounded = this.scene.player.sprite.body.touching.down;
+                    const horizontalOverlap = playerBounds.right > platformBounds.left && 
+                                             playerBounds.left < platformBounds.right;
+                    const isAbovePlatform = playerBounds.bottom >= platformBounds.top - 5 && 
+                                           playerBounds.bottom <= platformBounds.top + 10;
+                    
+                    if (isGrounded && horizontalOverlap && isAbovePlatform) {
                         this.scene.player.sprite.x += deltaX;
                     }
                 }

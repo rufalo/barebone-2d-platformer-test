@@ -90,6 +90,9 @@ class DebugMenu {
         
         // Versioned ability properties
         this.setupVersionedSlider('sprintSpeed', 'sprint', 'speed');
+        this.setupVersionedSlider('sprintDuration', 'sprint', 'duration');
+        this.setupVersionedSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
+        this.setupVersionedSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
         this.setupVersionedSlider('dashSpeed', 'dash', 'speed');
         this.setupVersionedSlider('dashDuration', 'dash', 'duration');
         this.setupVersionedSlider('dashCooldown', 'dash', 'cooldown');
@@ -182,6 +185,9 @@ class DebugMenu {
 
         // Sync versioned property sliders
         this.syncVersionedSlider('sprintSpeed', 'sprint', 'speed');
+        this.syncVersionedSlider('sprintDuration', 'sprint', 'duration');
+        this.syncVersionedSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
+        this.syncVersionedSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
         this.syncVersionedSlider('dashSpeed', 'dash', 'speed');
         this.syncVersionedSlider('dashDuration', 'dash', 'duration');
         this.syncVersionedSlider('dashCooldown', 'dash', 'cooldown');
@@ -205,7 +211,24 @@ class DebugMenu {
         if (!slider || !valueSpan) return;
 
         const currentVersion = this.player.config.versions[`${abilityType}Version`];
-        const config = this.player.abilityVersions[abilityType][currentVersion][property];
+        const versionData = this.player.abilityVersions[abilityType][currentVersion];
+        const config = versionData[property];
+        
+        // Check if property exists for this version
+        if (!config) {
+            // Hide the control if property doesn't exist for this version
+            const control = slider.closest('.property-control');
+            if (control) {
+                control.style.display = 'none';
+            }
+            return;
+        }
+        
+        // Show the control if it exists
+        const control = slider.closest('.property-control');
+        if (control) {
+            control.style.display = 'block';
+        }
         
         slider.min = config.min;
         slider.max = config.max;
@@ -232,6 +255,9 @@ class DebugMenu {
 
         // Update slider ranges and values when version changes
         this.syncVersionedSlider('sprintSpeed', 'sprint', 'speed');
+        this.syncVersionedSlider('sprintDuration', 'sprint', 'duration');
+        this.syncVersionedSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
+        this.syncVersionedSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
         this.syncVersionedSlider('dashSpeed', 'dash', 'speed');
         this.syncVersionedSlider('dashDuration', 'dash', 'duration');
         this.syncVersionedSlider('dashCooldown', 'dash', 'cooldown');
@@ -265,11 +291,11 @@ class DebugMenu {
             
             // Merge saved config with current config, preserving structure
             if (configData.config) {
-                this.player.config = { ...this.player.config, ...configData.config };
+                this.player.config = this.deepMerge(this.player.config, configData.config);
             }
             
             if (configData.abilityVersions) {
-                this.player.abilityVersions = { ...this.player.abilityVersions, ...configData.abilityVersions };
+                this.player.abilityVersions = this.deepMerge(this.player.abilityVersions, configData.abilityVersions);
             }
 
             console.log('Loaded saved debug configuration');
@@ -278,6 +304,22 @@ class DebugMenu {
             // Clear corrupted data
             localStorage.removeItem(this.storageKey);
         }
+    }
+
+    deepMerge(target, source) {
+        const result = { ...target };
+        
+        for (const key in source) {
+            if (source.hasOwnProperty(key)) {
+                if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
+                    result[key] = this.deepMerge(result[key] || {}, source[key]);
+                } else {
+                    result[key] = source[key];
+                }
+            }
+        }
+        
+        return result;
     }
 
     showSaveIndicator() {

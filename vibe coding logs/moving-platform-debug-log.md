@@ -219,9 +219,77 @@ this.physics.add.collider(this.player.sprite, this.level.movingPlatforms);
 4. **Manual Position Updates Work Better Than Velocity** - Direct `platform.x` updates avoid physics engine conflicts
 5. **Bounds-Based Detection is More Reliable** - `getBounds()` overlap checking works better than `physics.overlap()`
 
-## Final Status: ✅ SOLVED
-- Platform doesn't fall through ground
-- Platform moves back and forth correctly
-- Player can stand on platform without falling through
-- Player moves with platform when standing on it
-- All collision detection works properly
+## Post-Implementation Issue: Liberal Collision Detection
+
+### Issue 13: Player Moves When Standing on Other Platforms
+**Problem:** Player would move with moving platform even when standing on a separate static platform above it. The collision detection was too liberal - it only checked if player was touching down anywhere, not specifically on the moving platform.
+
+**Root Cause:**
+```javascript
+// Original problematic code
+if (deltaX !== 0 && this.scene.player && this.scene.player.sprite.body.touching.down) {
+    // This only checked if player was touching ANY ground, not this specific platform
+}
+```
+
+### Attempt 13: Specific Platform Collision Detection (Too Strict)
+**Code:**
+```javascript
+// First attempt - too restrictive
+if (playerBody.touching.down && 
+    playerBody.wasTouching.down &&
+    this.scene.physics.world.overlap(playerBody, platformBody)) {
+    // Additional position checks...
+}
+```
+**Result:** ❌ **Player collides but doesn't move with platform**
+**Problem:** `physics.world.overlap()` and `wasTouching.down` checks were too strict
+
+### Attempt 14: Bounds-Based Collision Detection
+**Code:**
+```javascript
+// Final working solution - bounds-based with proper constraints
+if (deltaX !== 0 && this.scene.player && this.scene.player.sprite.body) {
+    const playerBounds = this.scene.player.sprite.getBounds();
+    const platformBounds = platform.getBounds();
+    
+    // Check if player is standing on THIS specific platform
+    const isGrounded = this.scene.player.sprite.body.touching.down;
+    const horizontalOverlap = playerBounds.right > platformBounds.left && 
+                             playerBounds.left < platformBounds.right;
+    const isAbovePlatform = playerBounds.bottom >= platformBounds.top - 5 && 
+                           playerBounds.bottom <= platformBounds.top + 10;
+    
+    if (isGrounded && horizontalOverlap && isAbovePlatform) {
+        this.scene.player.sprite.x += deltaX;
+    }
+}
+```
+**Result:** ✅ **Perfect collision detection working**
+**Discovery:** Bounds-based detection with proper vertical range (±5 to +10 pixels) works better than physics overlap checks
+
+### Visual Improvement: Better Platform Distinction
+**Code:**
+```javascript
+// Changed from purple to bright orange
+platform.setTint(0xFF4500); // Bright orange/red to clearly distinguish moving platforms
+```
+**Result:** ✅ **Moving platform clearly visible**
+
+## Final Status: ✅ COMPLETELY SOLVED
+- Platform doesn't fall through ground ✅
+- Platform moves back and forth correctly ✅  
+- Player can stand on platform without falling through ✅
+- Player moves with platform when directly standing on it ✅
+- Player is NOT affected when standing on other platforms above/below moving platform ✅
+- Moving platform has bright orange color for clear visibility ✅
+- Bounds-based collision detection works perfectly ✅
+- Proper vertical range detection (±5 to +10 pixels from platform top) ✅
+- Only ONE moving platform exists in level (at coordinates 400,500 to 600,500) ✅
+
+## Key Final Learnings
+1. **Physics overlap checks can be too strict** - `physics.world.overlap()` didn't work reliably for this use case
+2. **Bounds-based detection with proper tolerances** - Player bottom within 5 pixels above to 10 pixels below platform top works perfectly
+3. **Three-condition check is optimal** - isGrounded + horizontalOverlap + isAbovePlatform provides precise detection
+4. **Visual distinction is critical** - Bright orange (#FF4500) makes moving platforms instantly recognizable
+5. **Iterative refinement necessary** - Started with too liberal (affected other platforms), went too strict (no movement), then found perfect balance

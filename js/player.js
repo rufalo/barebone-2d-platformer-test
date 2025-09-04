@@ -45,11 +45,14 @@ class Player {
             sprint: {
                 v1: {
                     speed: { value: 320, min: 200, max: 500 },
-                    name: "Sprint v1 (Original)"
+                    name: "Sprint v1 (Hold to Sprint)"
                 },
                 v2: {
-                    speed: { value: 280, min: 150, max: 450 },
-                    name: "Sprint v2 (Experimental)"
+                    speed: { value: 400, min: 250, max: 600 },
+                    duration: { value: 300, min: 100, max: 800 },
+                    jumpWindow: { value: 200, min: 50, max: 500 },
+                    airMomentumDuration: { value: 300, min: 100, max: 1000 },
+                    name: "Sprint v2 (Tap to Boost)"
                 }
             }
         };
@@ -73,6 +76,14 @@ class Player {
         // Dash cooldown
         this.lastDashTime = 0;
         this.canDash = true;
+        
+        // Sprint v2 boost system
+        this.isBoosting = false;
+        this.boostTimer = 0;
+        this.boostDirection = 0;
+        this.lastBoostTime = 0;
+        
+        // Sprint v2 extends boost duration when jumping during boost
         
         // Input setup
         this.cursors = scene.input.keyboard.createCursorKeys();
@@ -110,6 +121,17 @@ class Player {
                 this.sprite.setTint(0xffffff);
             }
         }
+        
+        // Handle boost timer (sprint v2)
+        if (this.isBoosting) {
+            this.boostTimer -= delta;
+            if (this.boostTimer <= 0) {
+                this.isBoosting = false;
+                this.sprite.setTint(0xffffff);
+            }
+        }
+        
+        // Sprint v2 boost continues even in air when timer is extended by jumping
         
         // Handle coyote time
         if (!this.isGrounded && this.coyoteTimer > 0) {
@@ -188,12 +210,33 @@ class Player {
         const leftPressed = this.cursors.left.isDown || this.keys.A.isDown;
         const rightPressed = this.cursors.right.isDown || this.keys.D.isDown;
         const sprintPressed = this.keys.SHIFT.isDown;
+        const sprintJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.SHIFT);
         
-        // Sprint handling (no cooldown)
-        this.isSprinting = sprintPressed && (leftPressed || rightPressed);
+        // Handle different sprint versions
+        if (this.config.abilities.sprintEnabled) {
+            if (this.config.versions.sprintVersion === 'v1') {
+                // v1: Hold to sprint (original system)
+                this.isSprinting = sprintPressed && (leftPressed || rightPressed);
+            } else if (this.config.versions.sprintVersion === 'v2') {
+                // v2: Tap to boost (Mega Man style)
+                if (sprintJustPressed && (leftPressed || rightPressed)) {
+                    this.performBoost(leftPressed ? -1 : 1);
+                }
+                // v2 doesn't use continuous sprint
+                this.isSprinting = false;
+            }
+        }
         
-        let currentSpeed = this.isSprinting && this.config.abilities.sprintEnabled ? 
-            this.getCurrentSprintConfig().speed.value : this.config.movement.speed.value;
+        let currentSpeed = this.config.movement.speed.value;
+        
+        // Apply sprint speed for v1 or boost speed for v2
+        if (this.config.abilities.sprintEnabled) {
+            if (this.config.versions.sprintVersion === 'v1' && this.isSprinting) {
+                currentSpeed = this.getCurrentSprintConfig().speed.value;
+            } else if (this.config.versions.sprintVersion === 'v2' && this.isBoosting) {
+                currentSpeed = this.getCurrentSprintConfig().speed.value;
+            }
+        }
         
         // Reduce speed when crouching
         if (this.isCrouching) {
@@ -213,13 +256,19 @@ class Player {
             if (this.isGrounded) {
                 this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.6); // Ground friction
             } else {
-                this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.95); // Air resistance
+                // Don't apply air resistance if we have air momentum from boost jump
+                if (!this.hasAirMomentum) {
+                    this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.95); // Air resistance
+                }
+                // Air momentum is handled in update() loop with gradual decay
             }
         }
         
-        // Visual feedback for sprint state
-        if (this.isSprinting && !this.isDashing) {
-            this.sprite.setTint(0xFFFF99); // Light yellow when sprinting
+        // Visual feedback for sprint/boost state  
+        if (this.isBoosting && !this.isDashing) {
+            this.sprite.setTint(0x00FF99); // Green when boosting (v2)
+        } else if (this.isSprinting && !this.isDashing) {
+            this.sprite.setTint(0xFFFF99); // Light yellow when sprinting (v1)
         } else if (!this.canDash && !this.isDashing) {
             this.sprite.setTint(0x999999); // Gray when dash is on cooldown
         } else if (!this.isDashing) {
@@ -246,6 +295,26 @@ class Player {
                 this.sprite.setVelocityY(-this.config.jump.velocity.value);
                 this.jumpBuffer = 0;
                 this.coyoteTimer = 0;
+                
+                // Check for boost extension (sprint v2 only)
+                if (this.config.versions.sprintVersion === 'v2' && this.config.abilities.sprintEnabled) {
+                    // If jumping during an active boost, extend the boost timer with air momentum duration
+                    if (this.isBoosting && this.boostDirection !== 0) {
+                        const sprintConfig = this.getCurrentSprintConfig();
+                        
+                        // Extend the current boost timer by adding air momentum duration
+                        this.boostTimer += sprintConfig.airMomentumDuration?.value || 1000;
+                        
+                        // Visual effect for boost jump extension
+                        this.sprite.setTint(0x00FFFF); // Cyan for extended boost jump
+                        this.scene.time.delayedCall(150, () => {
+                            if (!this.isDashing) {
+                                // Keep boost tint (green) if still boosting
+                                this.sprite.setTint(this.isBoosting ? 0x00FF99 : 0xffffff);
+                            }
+                        });
+                    }
+                }
             }
             // Double jump
             else if (this.config.abilities.doubleJumpEnabled && this.canDoubleJump && !this.isGrounded) {
@@ -291,6 +360,31 @@ class Player {
                 this.sprite.body.setOffset(2, 0);
             }
         }
+    }
+    
+    performBoost(direction) {
+        if (this.isBoosting || !this.config.abilities.sprintEnabled) return;
+        if (this.config.versions.sprintVersion !== 'v2') return;
+        if (!this.isGrounded) return; // Can only boost while grounded
+        
+        const sprintConfig = this.getCurrentSprintConfig();
+        
+        // Safety check: ensure v2 properties exist
+        if (!sprintConfig.duration) {
+            console.warn('Sprint v2 duration property missing');
+            return;
+        }
+        
+        this.isBoosting = true;
+        this.boostTimer = sprintConfig.duration.value;
+        this.boostDirection = direction;
+        this.lastBoostTime = this.scene.time.now;
+        
+        // Visual effect for boost
+        this.sprite.setTint(0x00FF99); // Green tint for boost
+        
+        // Apply immediate velocity boost
+        this.sprite.setVelocityX(sprintConfig.speed.value * direction);
     }
     
     handleDashing() {
