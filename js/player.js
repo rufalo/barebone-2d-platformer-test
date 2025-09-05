@@ -71,11 +71,19 @@ class Player {
         this.isCrouching = false;
         this.isSliding = false;
         this.isSprinting = false;
+        this.isWallSliding = false;
         this.crouchVisualApplied = false;
         this.dashTimer = 0;
         this.slideTimer = 0;
         this.coyoteTimer = 0;
         this.jumpBuffer = 0;
+        
+        // Natural wall kick system
+        this.wallSide = null; // 'left' or 'right' - which side the wall is on
+        this.canWallKick = true; // Can perform wall kick (resets on ground)
+        this.wallKickMomentum = false; // Preserve horizontal momentum after wall kick
+        this.wallKickMomentumTimer = 0; // Duration to preserve momentum
+        this.wallKickMomentumDuration = 150; // ms to preserve horizontal momentum (reduced for better feel)
         
         // Double-tap dash tracking
         this.lastLeftTap = 0;
@@ -176,10 +184,21 @@ class Player {
             this.jumpBuffer -= delta;
         }
         
+        // Handle wall kick momentum timer
+        if (this.wallKickMomentum && this.wallKickMomentumTimer > 0) {
+            this.wallKickMomentumTimer -= delta;
+            if (this.wallKickMomentumTimer <= 0) {
+                this.wallKickMomentum = false;
+            }
+        }
+        
         // Handle dash cooldown
         if (!this.canDash && this.scene.time.now - this.lastDashTime >= this.getCurrentDashConfig().cooldown.value) {
             this.canDash = true;
         }
+        
+        // Check for wall sliding conditions
+        this.checkWallSliding();
         
         // Input handling
         this.handleInput();
@@ -201,6 +220,11 @@ class Player {
         // Reset double jump
         this.canDoubleJump = true;
         
+        // Reset wall kick ability when touching ground
+        if (source === 'ground') {
+            this.canWallKick = true;
+        }
+        
         // Only reset dash cooldown if enough time has passed or from entity
         if (source === 'entity' || this.scene.time.now - this.lastDashTime >= this.getCurrentDashConfig().cooldown.value) {
             this.canDash = true;
@@ -218,12 +242,72 @@ class Player {
         }
     }
     
+    checkWallSliding() {
+        // Wall sliding conditions:
+        // 1. Player is in air (not grounded)
+        // 2. Player is falling (positive Y velocity) 
+        // 3. Player is touching a wall horizontally
+        
+        const wasWallSliding = this.isWallSliding;
+        let shouldWallSlide = false;
+        let detectedWallSide = null;
+        
+        // Only check if player is in air and falling
+        if (!this.isGrounded && this.sprite.body.velocity.y > 50) {
+            // Check if touching walls horizontally
+            const touchingLeft = this.sprite.body.touching.left;
+            const touchingRight = this.sprite.body.touching.right;
+            
+            if (touchingLeft || touchingRight) {
+                // Find which wall we're touching using bounds-based detection (more reliable than physics.overlap)
+                const playerBounds = this.sprite.getBounds();
+                
+                for (let wall of this.scene.level.walls) {
+                    const wallBounds = wall.getBounds();
+                    
+                    // Check for bounds overlap (horizontal and vertical)
+                    const horizontalOverlap = playerBounds.right > wallBounds.left && 
+                                            playerBounds.left < wallBounds.right;
+                    const verticalOverlap = playerBounds.bottom > wallBounds.top && 
+                                          playerBounds.top < wallBounds.bottom;
+                    
+                    if (horizontalOverlap && verticalOverlap) {
+                        // Determine wall side based on relative positions
+                        if (this.sprite.x < wall.x) {
+                            // Player is left of wall, so wall is on right side
+                            detectedWallSide = 'right';
+                        } else {
+                            // Player is right of wall, so wall is on left side  
+                            detectedWallSide = 'left';
+                        }
+                        shouldWallSlide = true;
+                        console.log(`Wall detected: ${detectedWallSide} side, player at ${this.sprite.x.toFixed(0)}, wall at ${wall.x.toFixed(0)}`);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Handle wall slide state changes
+        if (shouldWallSlide && !wasWallSliding) {
+            // Start wall sliding
+            this.startWallSlide(detectedWallSide);
+        } else if (!shouldWallSlide && wasWallSliding) {
+            // Stop wall sliding
+            this.stopWallSlide();
+        } else if (shouldWallSlide && wasWallSliding && this.wallSide !== detectedWallSide) {
+            // Wall side changed (rare but possible)
+            this.stopWallSlide();
+            this.startWallSlide(detectedWallSide);
+        }
+    }
+    
     handleInput() {
         // Jumping is allowed during slide for slide-to-jump
         this.handleJumping();
         
-        if (this.isDashing || this.isSliding) {
-            return; // Don't allow movement/crouch/dash/shoot during dash or slide
+        if (this.isDashing || this.isSliding || this.wallKickMomentum) {
+            return; // Don't allow movement/crouch/dash/shoot during dash, slide, or wall kick momentum
         }
         
         // Horizontal movement
@@ -289,6 +373,62 @@ class Player {
             }
         }
         
+        // Handle wall sliding movement
+        if (this.isWallSliding) {
+            let pressingIntoWall = false;
+            let pressingAwayFromWall = false;
+            
+            if (this.wallSide === 'right') {
+                // Wall is on right side
+                pressingIntoWall = rightPressed && !leftPressed;
+                pressingAwayFromWall = leftPressed && !rightPressed;
+                
+                if (pressingAwayFromWall) {
+                    // Moving away from right wall (left)
+                    this.sprite.setVelocityX(-currentSpeed);
+                    this.facingRight = false;
+                    this.sprite.setFlipX(true);
+                } else if (pressingIntoWall) {
+                    // Pressing into right wall
+                    this.sprite.setVelocityX(0);
+                    this.facingRight = true;
+                    this.sprite.setFlipX(false);
+                } else {
+                    // Neutral - stick to wall
+                    this.sprite.setVelocityX(0);
+                }
+            } else if (this.wallSide === 'left') {
+                // Wall is on left side
+                pressingIntoWall = leftPressed && !rightPressed;
+                pressingAwayFromWall = rightPressed && !leftPressed;
+                
+                if (pressingAwayFromWall) {
+                    // Moving away from left wall (right)
+                    this.sprite.setVelocityX(currentSpeed);
+                    this.facingRight = true;
+                    this.sprite.setFlipX(false);
+                } else if (pressingIntoWall) {
+                    // Pressing into left wall
+                    this.sprite.setVelocityX(0);
+                    this.facingRight = false;
+                    this.sprite.setFlipX(true);
+                } else {
+                    // Neutral - stick to wall
+                    this.sprite.setVelocityX(0);
+                }
+            }
+            
+            // Apply wall slide friction when pressing into wall AND falling down
+            if (pressingIntoWall && this.sprite.body.velocity.y > 0) {
+                // Slow descent when pressing into wall
+                this.sprite.setVelocityY(25);
+            }
+            // If moving up (jumping) or not pressing into wall, let normal physics apply
+            
+            this.updateMovementVisuals();
+            return;
+        }
+        
         // Handle sliding movement
         if (this.isSliding) {
             // Override normal movement during slide
@@ -316,11 +456,11 @@ class Player {
             if (this.isGrounded) {
                 this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.6); // Ground friction
             } else {
-                // Don't apply air resistance if we have air momentum from boost jump
-                if (!this.hasAirMomentum) {
+                // Don't apply air resistance if we have air momentum from boost jump or wall kick
+                if (!this.hasAirMomentum && !this.wallKickMomentum) {
                     this.sprite.setVelocityX(this.sprite.body.velocity.x * 0.95); // Air resistance
                 }
-                // Air momentum is handled in update() loop with gradual decay
+                // Air momentum and wall kick momentum are handled in update() loop with gradual decay
             }
         }
         
@@ -342,8 +482,13 @@ class Player {
         }
         
         if (this.jumpBuffer > 0) {
+            // Natural wall kick system
+            if (this.isWallSliding && this.canWallKick) {
+                this.performWallKick();
+                this.jumpBuffer = 0;
+            }
             // Regular jump (grounded or coyote time)
-            if (this.isGrounded || this.coyoteTimer > 0) {
+            else if (this.isGrounded || this.coyoteTimer > 0) {
                 this.sprite.setVelocityY(-this.config.jump.velocity.value);
                 this.jumpBuffer = 0;
                 this.coyoteTimer = 0;
@@ -550,6 +695,9 @@ class Player {
         if (this.isDashing) {
             // Dash colors handled in performDash/performAirDash methods
             return;
+        } else if (this.isWallSliding) {
+            // Wall sliding - blue tint
+            this.sprite.setTint(0x00AAFF);
         } else if (this.isSliding) {
             // Slide color - orange to distinguish from other states
             if (this.isBoosting) {
@@ -716,5 +864,92 @@ class Player {
                 this.sprite.setTint(0xffffff);
             });
         }
+    }
+    
+    startWallSlide(side = 'right') {
+        if (this.isWallSliding) return; // Already wall sliding
+        
+        this.isWallSliding = true;
+        this.wallSide = side; // Store which side the wall is on
+        
+        // Don't immediately change velocity - let normal physics continue
+        // Wall slide friction will be applied in handleHorizontalMovement based on input
+        
+        // Visual feedback - blue tint for wall sliding
+        this.sprite.setTint(0x00AAFF);
+        
+        console.log(`Started wall sliding on ${side} side`);
+    }
+    
+    stopWallSlide() {
+        if (!this.isWallSliding) return; // Not wall sliding
+        
+        this.isWallSliding = false;
+        this.wallSide = null;
+        
+        // Reset to normal physics
+        // (Don't reset velocity here - let normal movement handle it)
+        
+        // Update visual feedback
+        this.updateMovementVisuals();
+        
+        console.log('Stopped wall sliding');
+    }
+    
+    performWallKick() {
+        if (!this.isWallSliding || !this.canWallKick) return;
+        
+        // Natural wall kick - horizontal boost + smaller vertical boost
+        const jumpPower = this.config.jump.velocity.value * 0.7; // Reduced jump height for wall kick
+        let horizontalDirection;
+        let kickPower = 500; // Balanced horizontal kick power
+        
+        // Determine kick direction based on wall side
+        if (this.wallSide === 'right') {
+            // Wall is on right, kick left
+            horizontalDirection = -1;
+        } else if (this.wallSide === 'left') {
+            // Wall is on left, kick right  
+            horizontalDirection = 1;
+        } else {
+            // Fallback
+            horizontalDirection = this.facingRight ? -1 : 1;
+        }
+        
+        // Apply kick velocities - strong horizontal boost + full vertical jump
+        this.sprite.setVelocityY(-jumpPower);
+        this.sprite.setVelocityX(kickPower * horizontalDirection);
+        
+        // Debug logging
+        console.log(`Wall kick applied: X velocity = ${kickPower * horizontalDirection}, Y velocity = ${-jumpPower}`);
+        
+        // Check velocity immediately after setting it
+        this.scene.time.delayedCall(16, () => { // Next frame check
+            console.log(`Wall kick velocity check: X = ${this.sprite.body.velocity.x.toFixed(1)}, Y = ${this.sprite.body.velocity.y.toFixed(1)}`);
+        });
+        
+        // Update state
+        this.canWallKick = false; // One kick per wall contact
+        this.isWallSliding = false;
+        this.wallSide = null;
+        
+        // Activate momentum preservation
+        this.wallKickMomentum = true;
+        this.wallKickMomentumTimer = this.wallKickMomentumDuration;
+        
+        // Update facing direction based on kick direction
+        this.facingRight = horizontalDirection > 0;
+        this.sprite.setFlipX(!this.facingRight);
+        
+        // Visual feedback - bright green for natural wall kick
+        this.sprite.setTint(0x00FF00);
+        
+        this.scene.time.delayedCall(300, () => {
+            if (!this.isDashing) {
+                this.updateMovementVisuals();
+            }
+        });
+        
+        console.log(`Wall kick: direction=${horizontalDirection}, kick power=${kickPower}, jump power=${jumpPower.toFixed(0)}`);
     }
 }

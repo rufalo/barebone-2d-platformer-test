@@ -11,7 +11,8 @@
       "TodoWrite",
       "NotebookEdit",
       "WebSearch",
-      "WebFetch(domain:phaser.io)"
+      "WebFetch(domain:phaser.io)",
+      "WebFetch(domain:phaser.discourse.group)"
     ],
     "deny": [],
     "ask": []

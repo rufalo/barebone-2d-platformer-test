@@ -13,6 +13,9 @@ class Level {
             immovable: true
         });
         
+        // Store wall sprites for collision-based wall detection
+        this.walls = [];
+        
         this.createLevel();
     }
     
@@ -48,6 +51,9 @@ class Level {
         
         // Create a moving platform (example for future expansion)
         this.createMovingPlatform(400, 500, 600, 500);
+        
+        // Create cliff structure for wall jump testing
+        this.createCliff();
     }
     
     createPlatform(x, y, texture = 'platform') {
@@ -130,6 +136,62 @@ class Level {
         return platform;
     }
     
+    createCliff() {
+        // Create a left-side wall for testing bidirectional wall jumping
+        this.createLeftWall();
+        
+        // Create right wall using same approach as left wall
+        this.createRightWall();
+    }
+    
+    createLeftWall() {
+        // Create a left-side wall for testing bidirectional wall jumping
+        const wallX = 50; // Left side of level  
+        const wallY = 368; // Same height as right cliff
+        
+        // Create left wall using the cliff texture
+        const leftWall = this.scene.physics.add.staticSprite(wallX, wallY, 'cliff');
+        leftWall.setOrigin(0.5, 0.5);
+        leftWall.setTint(0x8B4513); // Brown tint to distinguish from right cliff
+        leftWall.isWall = true; // Mark as wall for collision detection
+        leftWall.wallSide = 'left'; // Store which side this wall is on
+        
+        this.platforms.add(leftWall);
+        this.walls.push(leftWall); // Store in walls array for detection
+        
+        // Add approach platform on the right for jumping toward left wall
+        const leftApproachPlatform = this.createPlatform(wallX + 150, 400, 'platform');
+        
+        // Add landing platform at top of left wall
+        const leftTopPlatform = this.createPlatform(wallX - 96, 168, 'platform');
+        
+        console.log('Created left wall at x =', wallX);
+    }
+    
+    createRightWall() {
+        // Create a right-side wall for testing bidirectional wall jumping
+        const wallX = 1200; // Right side of level  
+        const wallY = 368; // Same height as left wall
+        
+        // Create right wall using the cliff texture
+        const rightWall = this.scene.physics.add.staticSprite(wallX, wallY, 'cliff');
+        rightWall.setOrigin(0.5, 0.5);
+        rightWall.setTint(0x654321); // Darker brown to distinguish from left wall
+        rightWall.isWall = true; // Mark as wall for collision detection
+        rightWall.wallSide = 'right'; // Store which side this wall is on
+        
+        this.platforms.add(rightWall);
+        this.walls.push(rightWall); // Store in walls array for detection
+        
+        // Add approach platform on the left for jumping toward right wall
+        const rightApproachPlatform = this.createPlatform(wallX - 150, 400, 'platform');
+        
+        // Add landing platform at top of right wall
+        const rightTopPlatform = this.createPlatform(wallX + 96, 168, 'platform');
+        
+        console.log('Created right wall at x =', wallX);
+    }
+    
     // Method to add collision with player (called from main game scene)
     setupPlayerCollisions(player) {
         this.scene.physics.add.collider(player.sprite, this.platforms);
@@ -167,6 +229,8 @@ class Level {
                 }
             }
         });
+        
+        // Wall detection is now handled in Player class using collision system
     }
     
     // Method to create additional platforms dynamically

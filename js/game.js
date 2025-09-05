@@ -5,42 +5,64 @@ class GameScene extends Phaser.Scene {
 
     preload() {
         // Create colored rectangles as placeholders for sprites
-        this.add.graphics()
+        // Destroy graphics after generating textures to avoid them appearing in scene
+        
+        let graphics = this.add.graphics()
             .fillStyle(0x4A90E2)
-            .fillRect(0, 0, 32, 32)
-            .generateTexture('player', 32, 32);
+            .fillRect(0, 0, 32, 32);
+        graphics.generateTexture('player', 32, 32);
+        graphics.destroy();
             
         // Create crouched player texture (shorter rectangle)
-        this.add.graphics()
+        graphics = this.add.graphics()
             .fillStyle(0x4A90E2)
-            .fillRect(0, 0, 32, 16)  // Half height for crouched state
-            .generateTexture('player_crouch', 32, 16);
-            
+            .fillRect(0, 0, 32, 16);  // Half height for crouched state
+        graphics.generateTexture('player_crouch', 32, 16);
+        graphics.destroy();
 
-        this.add.graphics()
+        graphics = this.add.graphics()
             .fillStyle(0x8B4513)
-            .fillRect(0, 0, 64, 16)
-            .generateTexture('platform', 64, 16);
+            .fillRect(0, 0, 64, 16);
+        graphics.generateTexture('platform', 64, 16);
+        graphics.destroy();
+            
+        // Create cliff texture (tall vertical wall)
+        graphics = this.add.graphics()
+            .fillStyle(0x654321)
+            .fillRect(0, 0, 64, 400);  // Wide and tall for cliff wall
+        graphics.generateTexture('cliff', 64, 400);
+        graphics.destroy();
 
-        this.add.graphics()
+        graphics = this.add.graphics()
             .fillStyle(0xFF6B6B)
-            .fillRect(0, 0, 24, 24)
-            .generateTexture('target', 24, 24);
+            .fillRect(0, 0, 24, 24);
+        graphics.generateTexture('target', 24, 24);
+        graphics.destroy();
 
-        this.add.graphics()
+        graphics = this.add.graphics()
             .fillStyle(0xFFD93D)
-            .fillRect(0, 0, 8, 8)
-            .generateTexture('bullet', 8, 8);
+            .fillRect(0, 0, 8, 8);
+        graphics.generateTexture('bullet', 8, 8);
+        graphics.destroy();
 
-        this.add.graphics()
+        graphics = this.add.graphics()
             .fillStyle(0x6BCF7F)
-            .fillRect(0, 0, 128, 16)
-            .generateTexture('ground', 128, 16);
+            .fillRect(0, 0, 128, 16);
+        graphics.generateTexture('ground', 128, 16);
+        graphics.destroy();
 
-        this.add.graphics()
+        graphics = this.add.graphics()
             .fillStyle(0x9B59B6)
-            .fillRect(0, 0, 20, 20)
-            .generateTexture('resetOrb', 20, 20);
+            .fillRect(0, 0, 20, 20);
+        graphics.generateTexture('resetOrb', 20, 20);
+        graphics.destroy();
+
+        // Create wall trigger texture (thin vertical rectangle)
+        graphics = this.add.graphics()
+            .fillStyle(0x00FFFF)
+            .fillRect(0, 0, 8, 400);
+        graphics.generateTexture('wallTrigger', 8, 400);
+        graphics.destroy();
     }
 
     create() {
