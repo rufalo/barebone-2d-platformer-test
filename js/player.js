@@ -78,12 +78,19 @@ class Player {
         this.coyoteTimer = 0;
         this.jumpBuffer = 0;
         
-        // Natural wall kick system
+        // Natural wall kick system with sprint integration
         this.wallSide = null; // 'left' or 'right' - which side the wall is on
         this.canWallKick = true; // Can perform wall kick (resets on ground)
         this.wallKickMomentum = false; // Preserve horizontal momentum after wall kick
         this.wallKickMomentumTimer = 0; // Duration to preserve momentum
         this.wallKickMomentumDuration = 150; // ms to preserve horizontal momentum (reduced for better feel)
+        
+        // Sprint-powered wall running system
+        this.wallRunCount = 0; // Track wall runs up same wall
+        this.maxWallRuns = 2; // Allow 2 wall runs up per boost
+        this.isWallRunning = false; // Currently wall running (vertical movement)
+        this.wallRunBoostActive = false; // Sprint boost active during wall interaction
+        this.wallRunActivated = false; // Flag for wall run state activation
         
         // Double-tap dash tracking
         this.lastLeftTap = 0;
@@ -220,9 +227,13 @@ class Player {
         // Reset double jump
         this.canDoubleJump = true;
         
-        // Reset wall kick ability when touching ground
+        // Reset wall kick ability and wall running when touching ground
         if (source === 'ground') {
             this.canWallKick = true;
+            this.wallRunCount = 0;
+            this.isWallRunning = false;
+            this.wallRunBoostActive = false;
+            this.wallRunActivated = false;
         }
         
         // Only reset dash cooldown if enough time has passed or from entity
@@ -290,7 +301,13 @@ class Player {
         
         // Handle wall slide state changes
         if (shouldWallSlide && !wasWallSliding) {
-            // Start wall sliding
+            // Check for momentum conversion when hitting wall during jump
+            if (!this.isGrounded && this.sprite.body.velocity.y < 0) {
+                // Player is jumping upward and just hit wall - convert horizontal momentum to vertical
+                this.convertSprintMomentumToVertical();
+            }
+            
+            // Start wall sliding - check for active sprint boost
             this.startWallSlide(detectedWallSide);
         } else if (!shouldWallSlide && wasWallSliding) {
             // Stop wall sliding
@@ -482,8 +499,9 @@ class Player {
         }
         
         if (this.jumpBuffer > 0) {
-            // Natural wall kick system
+            // Wall kick system - ALL wall jumps kick away from wall
             if (this.isWallSliding && this.canWallKick) {
+                console.log('💥 Performing WALL KICK away from wall');
                 this.performWallKick();
                 this.jumpBuffer = 0;
             }
@@ -695,9 +713,15 @@ class Player {
         if (this.isDashing) {
             // Dash colors handled in performDash/performAirDash methods
             return;
+        } else if (this.wallRunActivated || this.wallRunBoostActive) {
+            // WALL RUN - Sprint boost active while against wall (highest priority)
+            this.sprite.setTint(0x00FF00); // Bright green for wall run state
         } else if (this.isWallSliding) {
-            // Wall sliding - blue tint
-            this.sprite.setTint(0x00AAFF);
+            // Wall sliding - blue for normal wall slide
+            this.sprite.setTint(0x00AAFF); // Blue for normal wall slide
+        } else if (this.isWallRunning) {
+            // Wall running - bright cyan
+            this.sprite.setTint(0x00FFFF);
         } else if (this.isSliding) {
             // Slide color - orange to distinguish from other states
             if (this.isBoosting) {
@@ -872,11 +896,25 @@ class Player {
         this.isWallSliding = true;
         this.wallSide = side; // Store which side the wall is on
         
+        // Capture sprint boost for wall running
+        if (this.isBoosting && this.config.versions.movementSystem === 'v2') {
+            this.wallRunBoostActive = true;
+            console.log('🟢 WALL RUN ACTIVATED - Sprint boost + wall contact!');
+        } else {
+            this.wallRunBoostActive = false;
+            console.log('🔵 Normal wall slide - no sprint boost');
+            console.log(`isBoosting: ${this.isBoosting}, movementSystem: ${this.config.versions.movementSystem}`);
+        }
+        
         // Don't immediately change velocity - let normal physics continue
         // Wall slide friction will be applied in handleHorizontalMovement based on input
         
-        // Visual feedback - blue tint for wall sliding
-        this.sprite.setTint(0x00AAFF);
+        // Visual feedback - different colors for boost vs normal wall sliding
+        if (this.wallRunBoostActive) {
+            this.sprite.setTint(0x00FFAA); // Green-blue tint for boost wall slide
+        } else {
+            this.sprite.setTint(0x00AAFF); // Blue tint for normal wall slide
+        }
         
         console.log(`Started wall sliding on ${side} side`);
     }
@@ -886,6 +924,8 @@ class Player {
         
         this.isWallSliding = false;
         this.wallSide = null;
+        
+        // Don't reset wall run boost here - preserve it for potential wall kick
         
         // Reset to normal physics
         // (Don't reset velocity here - let normal movement handle it)
@@ -899,10 +939,29 @@ class Player {
     performWallKick() {
         if (!this.isWallSliding || !this.canWallKick) return;
         
-        // Natural wall kick - horizontal boost + smaller vertical boost
-        const jumpPower = this.config.jump.velocity.value * 0.7; // Reduced jump height for wall kick
+        // Context-sensitive wall jump based on current vertical velocity
+        const currentVerticalVelocity = this.sprite.body.velocity.y;
+        const baseJumpPower = this.config.jump.velocity.value;
+        let jumpPower, kickPower;
+        let jumpType;
+        
+        console.log(`🔍 Wall jump debug: vertical velocity = ${currentVerticalVelocity.toFixed(1)}`);
+        
+        if (currentVerticalVelocity < -20) {
+            // WALL PEAK JUMP - Player moving upward, kick away with high arc
+            jumpType = "wall_peak";
+            jumpPower = baseJumpPower * 0.8; // High vertical for big arc
+            kickPower = 450; // Moderate horizontal kick 
+            console.log('⬆️ WALL PEAK JUMP - HIGH arc, medium distance');
+        } else {
+            // WALL SLIDE JUMP - Player sliding down or moving slowly, kick away with low fast arc
+            jumpType = "wall_slide";
+            jumpPower = baseJumpPower * 0.3; // Very low vertical for fast trajectory
+            kickPower = 800; // Very strong horizontal kick for maximum distance
+            console.log('➡️ WALL SLIDE JUMP - LOW arc, MAXIMUM distance');
+        }
+        
         let horizontalDirection;
-        let kickPower = 500; // Balanced horizontal kick power
         
         // Determine kick direction based on wall side
         if (this.wallSide === 'right') {
@@ -933,6 +992,10 @@ class Player {
         this.isWallSliding = false;
         this.wallSide = null;
         
+        // Reset wall running state after kick
+        this.wallRunBoostActive = false;
+        this.isWallRunning = false;
+        
         // Activate momentum preservation
         this.wallKickMomentum = true;
         this.wallKickMomentumTimer = this.wallKickMomentumDuration;
@@ -941,8 +1004,12 @@ class Player {
         this.facingRight = horizontalDirection > 0;
         this.sprite.setFlipX(!this.facingRight);
         
-        // Visual feedback - bright green for natural wall kick
-        this.sprite.setTint(0x00FF00);
+        // Visual feedback based on jump type
+        if (jumpType === 'wall_peak') {
+            this.sprite.setTint(0x00FFFF); // Cyan for wall peak jump
+        } else {
+            this.sprite.setTint(0xFF6600); // Orange for wall slide jump
+        }
         
         this.scene.time.delayedCall(300, () => {
             if (!this.isDashing) {
@@ -950,6 +1017,98 @@ class Player {
             }
         });
         
-        console.log(`Wall kick: direction=${horizontalDirection}, kick power=${kickPower}, jump power=${jumpPower.toFixed(0)}`);
+        console.log(`${jumpType === 'wall_peak' ? '⬆️' : '➡️'} ${jumpType.toUpperCase().replace('_', ' ')} JUMP: direction=${horizontalDirection}, kick power=${kickPower}, jump power=${jumpPower.toFixed(0)}`);
+    }
+    
+    performWallRun() {
+        if (!this.isWallSliding || !this.wallRunBoostActive || this.wallRunCount >= this.maxWallRuns) return;
+        
+        // Wall running - wall friction helps boost vertical jump power
+        const baseJumpPower = this.config.jump.velocity.value;
+        const sprintConfig = this.getCurrentSprintConfig();
+        const boostSpeed = sprintConfig.speed?.value || 400;
+        
+        // Wall friction boost - the faster you were sprinting, the more the wall helps you climb
+        const wallFrictionBoost = 1.4; // Wall friction gives 40% extra vertical power
+        const jumpPower = baseJumpPower * wallFrictionBoost;
+        
+        // Determine direction to maintain alongside wall
+        let horizontalDirection = 0;
+        if (this.wallSide === 'right') {
+            // Wall on right, maintain rightward momentum
+            horizontalDirection = 1;
+        } else if (this.wallSide === 'left') {
+            // Wall on left, maintain leftward momentum  
+            horizontalDirection = -1;
+        }
+        
+        // Apply wall run velocities - wall friction enhanced vertical + maintained horizontal momentum
+        this.sprite.setVelocityY(-jumpPower);
+        this.sprite.setVelocityX(boostSpeed * 0.8 * horizontalDirection); // Reduced horizontal for wall proximity
+        
+        // Update wall running state
+        this.wallRunCount++;
+        this.isWallRunning = true;
+        this.isWallSliding = false;
+        this.wallSide = null;
+        
+        // Extend boost timer for continued wall running
+        if (this.isBoosting) {
+            this.boostTimer += sprintConfig.airMomentumDuration?.value || 300;
+        }
+        
+        // Visual feedback - bright cyan for wall running
+        this.sprite.setTint(0x00FFFF);
+        
+        this.scene.time.delayedCall(200, () => {
+            if (!this.isDashing) {
+                this.updateMovementVisuals();
+            }
+        });
+        
+        console.log(`🧗 Wall friction climb #${this.wallRunCount}: vertical=${jumpPower.toFixed(0)} (${wallFrictionBoost}x boost), horizontal=${(boostSpeed * 0.8 * horizontalDirection).toFixed(0)}`);
+    }
+    
+    convertSprintMomentumToVertical() {
+        // Convert horizontal sprint momentum to vertical boost when hitting wall during jump
+        const currentHorizontalSpeed = Math.abs(this.sprite.body.velocity.x);
+        const currentVerticalSpeed = Math.abs(this.sprite.body.velocity.y);
+        
+        // Only convert if player has significant horizontal velocity (from sprint)
+        if (currentHorizontalSpeed > 200) {
+            // ACTIVATE WALL RUN immediately when sprint jumping into wall
+            if (this.isBoosting && this.config.versions.movementSystem === 'v2') {
+                this.wallRunBoostActive = true;
+                this.wallRunActivated = true;
+                console.log('🟢 WALL RUN ACTIVATED - Sprint jump into wall!');
+                
+                // Force visual update immediately
+                this.sprite.setTint(0x00FF00); // Bright green for wall run
+            }
+            
+            // Convert horizontal momentum to vertical boost
+            const momentumConversion = 0.3; // Convert 30% of horizontal speed to vertical
+            const verticalBoost = currentHorizontalSpeed * momentumConversion;
+            
+            // Add the boost to current vertical velocity (upward)
+            const newVerticalVelocity = this.sprite.body.velocity.y - verticalBoost;
+            this.sprite.setVelocityY(newVerticalVelocity);
+            
+            // Reduce horizontal velocity since some energy was converted
+            const energyLoss = 0.4; // Lose 40% of horizontal speed from wall impact
+            this.sprite.setVelocityX(this.sprite.body.velocity.x * energyLoss);
+            
+            // Don't override visual feedback here if wall run is activated
+            if (!this.wallRunActivated) {
+                this.sprite.setTint(0xFFFF00); // Yellow for momentum conversion only
+                this.scene.time.delayedCall(150, () => {
+                    if (!this.isDashing) {
+                        this.updateMovementVisuals();
+                    }
+                });
+            }
+            
+            console.log(`⚡ Momentum conversion: horizontal ${currentHorizontalSpeed.toFixed(0)} → vertical boost ${verticalBoost.toFixed(0)}`);
+        }
     }
 }
