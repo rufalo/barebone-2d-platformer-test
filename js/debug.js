@@ -33,7 +33,7 @@ class DebugMenu {
     setupAbilityToggles() {
         const doubleJumpToggle = document.getElementById('doubleJumpEnabled');
         const dashToggle = document.getElementById('dashEnabled');
-        const sprintToggle = document.getElementById('sprintEnabled');
+        const boostToggle = document.getElementById('boostEnabled');
 
         doubleJumpToggle.addEventListener('change', (e) => {
             if (this.player) {
@@ -51,9 +51,9 @@ class DebugMenu {
             e.target.blur(); // Remove focus to prevent keyboard interference
         });
 
-        sprintToggle.addEventListener('change', (e) => {
+        boostToggle.addEventListener('change', (e) => {
             if (this.player) {
-                this.player.config.abilities.sprintEnabled = e.target.checked;
+                this.player.config.abilities.boostEnabled = e.target.checked;
                 this.saveConfig();
             }
             e.target.blur(); // Remove focus to prevent keyboard interference
@@ -82,10 +82,10 @@ class DebugMenu {
         this.setupSlider('jumpBuffer', 'jump.bufferTime');
         
         // Movement system properties
-        this.setupMovementSystemSlider('sprintSpeed', 'sprint', 'speed');
-        this.setupMovementSystemSlider('sprintDuration', 'sprint', 'duration');
-        this.setupMovementSystemSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
-        this.setupMovementSystemSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
+        this.setupMovementSystemSlider('boostSpeed', 'boost', 'speed');
+        this.setupMovementSystemSlider('boostDuration', 'boost', 'duration');
+        this.setupMovementSystemSlider('boostJumpWindow', 'boost', 'jumpWindow');
+        this.setupMovementSystemSlider('boostAirMomentumDuration', 'boost', 'airMomentumDuration');
         this.setupMovementSystemSlider('dashSpeed', 'dash', 'speed');
         this.setupMovementSystemSlider('dashDuration', 'dash', 'duration');
         this.setupMovementSystemSlider('dashCooldown', 'dash', 'cooldown');
@@ -174,7 +174,7 @@ class DebugMenu {
         // Sync ability toggles
         document.getElementById('doubleJumpEnabled').checked = this.player.config.abilities.doubleJumpEnabled;
         document.getElementById('dashEnabled').checked = this.player.config.abilities.dashEnabled;
-        document.getElementById('sprintEnabled').checked = this.player.config.abilities.sprintEnabled;
+        document.getElementById('boostEnabled').checked = this.player.config.abilities.boostEnabled;
 
         // Sync movement system selector
         document.getElementById('movementSystemSelect').value = this.player.config.versions.movementSystem;
@@ -236,13 +236,13 @@ class DebugMenu {
         if (!this.player) return;
 
         const dashVersionLabel = document.getElementById('dashVersionLabel');
-        const sprintVersionLabel = document.getElementById('sprintVersionLabel');
+        const boostVersionLabel = document.getElementById('boostVersionLabel');
 
         if (dashVersionLabel) {
             dashVersionLabel.textContent = `(${this.player.config.versions.dashVersion})`;
         }
-        if (sprintVersionLabel) {
-            sprintVersionLabel.textContent = `(${this.player.config.versions.sprintVersion})`;
+        if (boostVersionLabel) {
+            boostVersionLabel.textContent = `(${this.player.config.versions.boostVersion})`;
         }
     }
 
@@ -250,10 +250,10 @@ class DebugMenu {
         if (!this.player) return;
 
         // Update slider ranges and values when version changes
-        this.syncVersionedSlider('sprintSpeed', 'sprint', 'speed');
-        this.syncVersionedSlider('sprintDuration', 'sprint', 'duration');
-        this.syncVersionedSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
-        this.syncVersionedSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
+        this.syncVersionedSlider('boostSpeed', 'boost', 'speed');
+        this.syncVersionedSlider('boostDuration', 'boost', 'duration');
+        this.syncVersionedSlider('boostJumpWindow', 'boost', 'jumpWindow');
+        this.syncVersionedSlider('boostAirMomentumDuration', 'boost', 'airMomentumDuration');
         this.syncVersionedSlider('dashSpeed', 'dash', 'speed');
         this.syncVersionedSlider('dashDuration', 'dash', 'duration');
         this.syncVersionedSlider('dashCooldown', 'dash', 'cooldown');
@@ -265,11 +265,11 @@ class DebugMenu {
         const currentSystem = this.player.config.versions.movementSystem;
         const system = this.player.movementSystems[currentSystem];
         
-        // Sync sprint properties
-        this.syncMovementSystemSlider('sprintSpeed', 'sprint', 'speed');
-        this.syncMovementSystemSlider('sprintDuration', 'sprint', 'duration');
-        this.syncMovementSystemSlider('sprintJumpWindow', 'sprint', 'jumpWindow');
-        this.syncMovementSystemSlider('sprintAirMomentumDuration', 'sprint', 'airMomentumDuration');
+        // Sync boost properties
+        this.syncMovementSystemSlider('boostSpeed', 'boost', 'speed');
+        this.syncMovementSystemSlider('boostDuration', 'boost', 'duration');
+        this.syncMovementSystemSlider('boostJumpWindow', 'boost', 'jumpWindow');
+        this.syncMovementSystemSlider('boostAirMomentumDuration', 'boost', 'airMomentumDuration');
         
         // Sync dash properties  
         this.syncMovementSystemSlider('dashSpeed', 'dash', 'speed');

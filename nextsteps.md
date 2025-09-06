@@ -2,6 +2,30 @@
 
 ## Immediate Priority Features
 
+### Player State Machine Implementation
+
+#### Current State Management Issues:
+- Multiple overlapping boolean flags create conflicts
+- Wall run visual feedback doesn't persist properly  
+- State transitions have timing race conditions
+- Visual priority system is fragile and unreliable
+
+#### Boost Chain State Machine Architecture:
+- **Base States** (exclusive): idle, walking, running, jumping, falling, wall_sliding, crouching, dashing, sliding
+- **Boost States** (enhancement layer): boost_ready, boost_active, boost_jump, boost_dash, boost_wallrun
+- **Status Flags** (concurrent): boost_chainable, boost_energy_full, boost_momentum, can_wall_kick, facing_direction
+
+#### Implementation Requirements:
+- **BoostStateManager class**: Centralized state management
+- **Energy System**: 300ms base, +200ms chain extensions, 1000ms max, 500ms cooldown
+- **Visual Feedback System**: State-based colors with energy intensity
+- **Chain Timing Windows**: Jump (200ms), dash (150ms), wall (300ms) extensions
+
+#### Key Benefits:
+- Eliminates competing boolean flag conflicts
+- Provides clear visual feedback hierarchy  
+- Enables boost chaining mechanics (boost→jump→dash→wallrun)
+- Creates foundation for future states (hurt, invincible, etc.)
 
 ### Platform System Improvements
 
@@ -50,10 +74,10 @@
 - **Environmental hazards**: Spikes, pits, moving hazards
 
 ### Advanced Movement
-- **Wall mechanics**: Wall jump, wall slide, wall climb
+- **Enhanced wall mechanics**: Wall run visual persistence, context-sensitive wall kicks
 - **Swimming**: Water physics, underwater movement
 - **Grappling hook**: Point-and-swing mechanics
-- **Movement v3**: New experimental movement system
+- **Movement v3**: New experimental movement system with boost integration
 
 ### Visual & Polish
 - **Particle effects**: Enhanced feedback for actions
@@ -85,6 +109,29 @@ The platform system improvements would integrate well with the existing movement
 
 ## Recommended Implementation Order
 
-1. **Platform trigger zones** - Improves fundamental movement reliability
-2. **Visual feedback improvements** - Make existing systems feel great
-3. **Advanced platform types** - Expand level design possibilities
+1. **Player State Machine** - Fixes fundamental state management and visual feedback issues
+2. **BoostStateManager Implementation** - Enables boost chaining and reliable wall run indicators
+3. **Platform trigger zones** - Improves fundamental movement reliability  
+4. **Advanced platform types** - Expand level design possibilities
+
+## State Machine Implementation Plan
+
+### Phase 1: Core Architecture
+1. Create `BoostStateManager` class with state categories
+2. Replace boolean flags with state machine methods
+3. Implement energy system with configurable timers
+
+### Phase 2: Visual System Overhaul  
+1. State-based visual feedback (replaces current fragile system)
+2. Energy intensity indicators
+3. Chain combo visual effects
+
+### Phase 3: Boost Chain Mechanics
+1. Chain timing windows and energy extensions
+2. Combo system (boost→jump→dash→wallrun)
+3. Debug visualization for state transitions
+
+### Phase 4: Integration & Testing
+1. Update debug menu for new state system
+2. Test all existing movement interactions
+3. Performance optimization and cleanup

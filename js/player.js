@@ -18,7 +18,7 @@ class Player {
             abilities: {
                 doubleJumpEnabled: true,
                 dashEnabled: true,
-                sprintEnabled: true
+                boostEnabled: true
             },
             versions: {
                 movementSystem: 'v2' // 'v1' = traditional, 'v2' = boost-integrated
@@ -29,13 +29,13 @@ class Player {
         this.movementSystems = {
             v1: {
                 name: "Traditional Movement",
-                description: "Hold to sprint + traditional dash",
+                description: "Hold to boost + traditional dash",
                 dash: {
                     speed: { value: 600, min: 300, max: 1000 },
                     duration: { value: 300, min: 100, max: 500 },
                     cooldown: { value: 1000, min: 200, max: 2000 }
                 },
-                sprint: {
+                boost: {
                     speed: { value: 320, min: 200, max: 500 }
                 }
             },
@@ -50,7 +50,7 @@ class Player {
                     airDashSpeed: { value: 400, min: 200, max: 700 },
                     airDashDuration: { value: 150, min: 50, max: 300 }
                 },
-                sprint: {
+                boost: {
                     speed: { value: 400, min: 250, max: 600 },
                     duration: { value: 350, min: 100, max: 800 },
                     jumpWindow: { value: 200, min: 50, max: 500 },
@@ -78,7 +78,7 @@ class Player {
         this.coyoteTimer = 0;
         this.jumpBuffer = 0;
         
-        // Natural wall kick system with sprint integration
+        // Natural wall kick system with boost integration
         this.wallSide = null; // 'left' or 'right' - which side the wall is on
         this.canWallKick = true; // Can perform wall kick (resets on ground)
         this.wallKickMomentum = false; // Preserve horizontal momentum after wall kick
@@ -127,8 +127,8 @@ class Player {
         return this.movementSystems[this.config.versions.movementSystem].dash;
     }
 
-    getCurrentSprintConfig() {
-        return this.movementSystems[this.config.versions.movementSystem].sprint;
+    getCurrentBoostConfig() {
+        return this.movementSystems[this.config.versions.movementSystem].boost;
     }
     
     getCurrentMovementSystem() {
@@ -160,7 +160,7 @@ class Player {
             }
         }
         
-        // Handle boost timer (sprint v2)
+        // Handle boost timer (boost v2)
         if (this.isBoosting) {
             this.boostTimer -= delta;
             if (this.boostTimer <= 0) {
@@ -307,7 +307,7 @@ class Player {
                 this.convertSprintMomentumToVertical();
             }
             
-            // Start wall sliding - check for active sprint boost
+            // Start wall sliding - check for active boost
             this.startWallSlide(detectedWallSide);
         } else if (!shouldWallSlide && wasWallSliding) {
             // Stop wall sliding
@@ -343,17 +343,17 @@ class Player {
     handleHorizontalMovement() {
         const leftPressed = this.cursors.left.isDown || this.keys.A.isDown;
         const rightPressed = this.cursors.right.isDown || this.keys.D.isDown;
-        const sprintPressed = this.keys.SHIFT.isDown;
-        const sprintJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.SHIFT);
+        const boostPressed = this.keys.SHIFT.isDown;
+        const boostJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.SHIFT);
         
         // Handle different movement systems
-        if (this.config.abilities.sprintEnabled) {
+        if (this.config.abilities.boostEnabled) {
             if (this.config.versions.movementSystem === 'v1') {
-                // Traditional: Hold to sprint
-                this.isSprinting = sprintPressed && (leftPressed || rightPressed);
+                // Traditional: Hold to boost
+                this.isSprinting = boostPressed && (leftPressed || rightPressed);
             } else if (this.config.versions.movementSystem === 'v2') {
                 // Boost-integrated: Tap to boost + air dash
-                if (sprintJustPressed) {
+                if (boostJustPressed) {
                     if (!this.isGrounded) {
                         // In air: Sprint button triggers air dash
                         if (this.config.abilities.dashEnabled) {
@@ -374,19 +374,19 @@ class Player {
                         this.performBoost(direction);
                     }
                 }
-                // v2 doesn't use continuous sprint
+                // v2 doesn't use continuous boost
                 this.isSprinting = false;
             }
         }
         
         let currentSpeed = this.config.movement.speed.value;
         
-        // Apply sprint speed for movement systems
-        if (this.config.abilities.sprintEnabled) {
+        // Apply boost speed for movement systems
+        if (this.config.abilities.boostEnabled) {
             if (this.config.versions.movementSystem === 'v1' && this.isSprinting) {
-                currentSpeed = this.getCurrentSprintConfig().speed.value;
+                currentSpeed = this.getCurrentBoostConfig().speed.value;
             } else if (this.config.versions.movementSystem === 'v2' && this.isBoosting) {
-                currentSpeed = this.getCurrentSprintConfig().speed.value;
+                currentSpeed = this.getCurrentBoostConfig().speed.value;
             }
         }
         
@@ -523,8 +523,8 @@ class Player {
                     
                     // If we were boost-sliding, extend boost for air momentum
                     if (this.isBoosting && this.config.versions.movementSystem === 'v2') {
-                        const sprintConfig = this.getCurrentSprintConfig();
-                        this.boostTimer += sprintConfig.airMomentumDuration?.value || 300;
+                        const boostConfig = this.getCurrentBoostConfig();
+                        this.boostTimer += boostConfig.airMomentumDuration?.value || 300;
                         
                         // Visual effect for boost slide jump
                         this.sprite.setTint(0x00FFFF); // Cyan for slide-jump boost extension
@@ -537,13 +537,13 @@ class Player {
                 }
                 
                 // Check for regular boost extension (boost-integrated movement system only)
-                else if (this.config.versions.movementSystem === 'v2' && this.config.abilities.sprintEnabled) {
+                else if (this.config.versions.movementSystem === 'v2' && this.config.abilities.boostEnabled) {
                     // If jumping during an active boost (not from slide), extend the boost timer
                     if (this.isBoosting && this.boostDirection !== 0) {
-                        const sprintConfig = this.getCurrentSprintConfig();
+                        const boostConfig = this.getCurrentBoostConfig();
                         
                         // Extend the current boost timer by adding air momentum duration
-                        this.boostTimer += sprintConfig.airMomentumDuration?.value || 300;
+                        this.boostTimer += boostConfig.airMomentumDuration?.value || 300;
                         
                         // Visual effect for boost jump extension
                         this.sprite.setTint(0x00FFFF); // Cyan for extended boost jump
@@ -583,7 +583,7 @@ class Player {
         
         
         if (crouchPressed && this.isGrounded) {
-            // For v2 system: prioritize slide when moving with boost/sprint
+            // For v2 system: prioritize slide when moving with boost
             if (this.config.versions.movementSystem === 'v2') {
                 if (crouchJustPressed && (leftPressed || rightPressed) && (this.isBoosting || this.isSprinting)) {
                     console.log('Starting ground slide for v2 system');
@@ -690,9 +690,9 @@ class Player {
         // Determine slide speed based on current movement state
         let slideSpeed;
         if (this.isBoosting) {
-            slideSpeed = this.getCurrentSprintConfig().speed?.value || 400;
+            slideSpeed = this.getCurrentBoostConfig().speed?.value || 400;
         } else if (this.isSprinting) {
-            slideSpeed = this.getCurrentSprintConfig().speed?.value || 320;
+            slideSpeed = this.getCurrentBoostConfig().speed?.value || 320;
         } else {
             slideSpeed = 250; // Default slide speed
         }
@@ -735,7 +735,7 @@ class Player {
         } else if (this.isBoosting) {
             this.sprite.setTint(0x00FF99); // Green when boosting (v2)
         } else if (this.isSprinting) {
-            this.sprite.setTint(0xFFFF99); // Light yellow when sprinting (v1)
+            this.sprite.setTint(0xFFFF99); // Light yellow when boosting (v1)
         } else if (!this.canDash) {
             this.sprite.setTint(0x999999); // Gray when dash is on cooldown
         } else {
@@ -744,20 +744,20 @@ class Player {
     }
     
     performBoost(direction) {
-        if (this.isBoosting || !this.config.abilities.sprintEnabled) return;
+        if (this.isBoosting || !this.config.abilities.boostEnabled) return;
         if (this.config.versions.movementSystem !== 'v2') return;
         if (!this.isGrounded) return; // Can only boost while grounded
         
-        const sprintConfig = this.getCurrentSprintConfig();
+        const boostConfig = this.getCurrentBoostConfig();
         
         // Safety check: ensure v2 properties exist
-        if (!sprintConfig.duration) {
+        if (!boostConfig.duration) {
             console.warn('Sprint v2 duration property missing');
             return;
         }
         
         this.isBoosting = true;
-        this.boostTimer = sprintConfig.duration.value;
+        this.boostTimer = boostConfig.duration.value;
         this.boostDirection = direction;
         this.lastBoostTime = this.scene.time.now;
         
@@ -896,13 +896,13 @@ class Player {
         this.isWallSliding = true;
         this.wallSide = side; // Store which side the wall is on
         
-        // Capture sprint boost for wall running
+        // Capture boost for wall running
         if (this.isBoosting && this.config.versions.movementSystem === 'v2') {
             this.wallRunBoostActive = true;
             console.log('🟢 WALL RUN ACTIVATED - Sprint boost + wall contact!');
         } else {
             this.wallRunBoostActive = false;
-            console.log('🔵 Normal wall slide - no sprint boost');
+            console.log('🔵 Normal wall slide - no boost');
             console.log(`isBoosting: ${this.isBoosting}, movementSystem: ${this.config.versions.movementSystem}`);
         }
         
@@ -1025,10 +1025,10 @@ class Player {
         
         // Wall running - wall friction helps boost vertical jump power
         const baseJumpPower = this.config.jump.velocity.value;
-        const sprintConfig = this.getCurrentSprintConfig();
-        const boostSpeed = sprintConfig.speed?.value || 400;
+        const boostConfig = this.getCurrentBoostConfig();
+        const boostSpeed = boostConfig.speed?.value || 400;
         
-        // Wall friction boost - the faster you were sprinting, the more the wall helps you climb
+        // Wall friction boost - the faster you were boosting, the more the wall helps you climb
         const wallFrictionBoost = 1.4; // Wall friction gives 40% extra vertical power
         const jumpPower = baseJumpPower * wallFrictionBoost;
         
@@ -1054,7 +1054,7 @@ class Player {
         
         // Extend boost timer for continued wall running
         if (this.isBoosting) {
-            this.boostTimer += sprintConfig.airMomentumDuration?.value || 300;
+            this.boostTimer += boostConfig.airMomentumDuration?.value || 300;
         }
         
         // Visual feedback - bright cyan for wall running
@@ -1070,13 +1070,13 @@ class Player {
     }
     
     convertSprintMomentumToVertical() {
-        // Convert horizontal sprint momentum to vertical boost when hitting wall during jump
+        // Convert horizontal boost momentum to vertical boost when hitting wall during jump
         const currentHorizontalSpeed = Math.abs(this.sprite.body.velocity.x);
         const currentVerticalSpeed = Math.abs(this.sprite.body.velocity.y);
         
-        // Only convert if player has significant horizontal velocity (from sprint)
+        // Only convert if player has significant horizontal velocity (from boost)
         if (currentHorizontalSpeed > 200) {
-            // ACTIVATE WALL RUN immediately when sprint jumping into wall
+            // ACTIVATE WALL RUN immediately when boost jumping into wall
             if (this.isBoosting && this.config.versions.movementSystem === 'v2') {
                 this.wallRunBoostActive = true;
                 this.wallRunActivated = true;
