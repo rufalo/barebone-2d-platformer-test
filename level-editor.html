@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Level Editor - Hierarchical Grid System</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .editor-panel {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        
+        .canvas-container {
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        
+        #tileCanvas {
+            border: 1px solid #ccc;
+            cursor: crosshair;
+        }
+        
+        .controls {
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 20px;
+            min-width: 250px;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input, select, button {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        .tool-button {
+            background: #2196F3;
+        }
+        
+        .tool-button:hover {
+            background: #1976D2;
+        }
+        
+        .tool-button.active {
+            background: #FF9800;
+        }
+        
+        .tool-button.active:hover {
+            background: #F57C00;
+        }
+        
+        .clear-button {
+            background: #f44336;
+        }
+        
+        .clear-button:hover {
+            background: #d32f2f;
+        }
+        
+        .info {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        
+        .cell-info, .world-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 10px;
+        }
+        
+        /* View Toggle */
+        .view-toggle {
+            text-align: center;
+            margin-top: 15px;
+        }
+        
+        .view-button {
+            background: #f0f0f0;
+            color: #333;
+            border: 2px solid #ccc;
+            padding: 10px 20px;
+            margin: 0 5px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        
+        .view-button:hover {
+            background: #e0e0e0;
+            border-color: #999;
+        }
+        
+        .view-button.active {
+            background: #2196F3;
+            color: white;
+            border-color: #1976D2;
+        }
+        
+        .view-button.active:hover {
+            background: #1976D2;
+        }
+        
+        /* View Content */
+        .view-content {
+            transition: opacity 0.3s ease;
+        }
+        
+        .world-container {
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 10px;
+        }
+        
+        #worldCanvas {
+            border: 1px solid #ccc;
+            cursor: crosshair;
+        }
+        
+        /* Controls Sections */
+        .controls-section {
+            transition: opacity 0.3s ease;
+        }
+        
+        /* World Controls Specific */
+        .placement-info {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+            background: #f9f9f9;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        
+        .selected-info {
+            font-size: 12px;
+            font-weight: bold;
+            color: #FF9800;
+            background: #fff3e0;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border: 1px solid #ffcc02;
+        }
+        
+        /* Quick Library */
+        .quick-library {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+            gap: 8px;
+            margin-bottom: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        
+        .quick-cell {
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 4px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+            background: white;
+        }
+        
+        .quick-cell:hover {
+            border-color: #2196F3;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        
+        .quick-cell.selected {
+            border-color: #FF9800;
+            background-color: #fff3e0;
+        }
+        
+        .quick-cell canvas {
+            display: block;
+            margin: 0 auto 4px auto;
+        }
+        
+        .quick-cell-name {
+            font-size: 10px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        @media (max-width: 768px) {
+            .editor-panel {
+                flex-direction: column;
+            }
+            
+            .controls {
+                min-width: auto;
+            }
+        }
+        
+        /* Modal styles */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border: 2px solid #333;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 800px;
+            max-height: 80%;
+            overflow: hidden;
+        }
+        
+        .modal-header {
+            background-color: #f0f0f0;
+            padding: 15px 20px;
+            border-bottom: 1px solid #ccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+        
+        .close-button {
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            color: #666;
+            background: none;
+            border: none;
+            padding: 0;
+        }
+        
+        .close-button:hover {
+            color: #000;
+        }
+        
+        .modal-body {
+            padding: 20px;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+        
+        .library-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .library-controls button {
+            width: auto;
+            margin-bottom: 0;
+            padding: 8px 16px;
+        }
+        
+        .library-info {
+            color: #666;
+            font-size: 12px;
+            font-style: italic;
+            margin-left: auto;
+        }
+        
+        .library-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .cell-thumbnail {
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .cell-thumbnail:hover {
+            border-color: #2196F3;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .cell-thumbnail.selected {
+            border-color: #FF9800;
+            background-color: #fff3e0;
+        }
+        
+        .cell-thumbnail canvas {
+            display: block;
+            margin: 0 auto 10px auto;
+            border: 1px solid #ddd;
+        }
+        
+        .cell-info {
+            text-align: center;
+        }
+        
+        .cell-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+        
+        .cell-details {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        @media (max-width: 600px) {
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
+            }
+            
+            .library-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            }
+            
+            .library-controls {
+                flex-wrap: wrap;
+            }
+            
+            .library-info {
+                margin-left: 0;
+                margin-top: 10px;
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Level Editor - Multi-Cell Grid System</h1>
+            <div class="info">
+                Draw across multiple level cells at once in a 3x3 grid layout.<br>
+                Each cell is 16x10 tiles, creating a total canvas of 48x30 tiles.
+            </div>
+        </div>
+        
+        <div class="editor-panel">
+            <div class="canvas-container">
+                <canvas id="tileCanvas" width="1536" height="960"></canvas>
+                <div class="cell-info">
+                    Multi-Cell Grid: <span id="gridSize">3x3</span> cells | 
+                    Cell Size: <span id="cellSize">16x10</span> tiles | 
+                    Total Grid: <span id="totalSize">48x30</span> tiles | 
+                    Tile Size: <span id="tileSize">32x32</span> px
+                </div>
+            </div>
+            
+            <div class="controls">
+                <div class="control-group">
+                    <h3>Grid Configuration</h3>
+                    <label for="gridCols">Grid Columns:</label>
+                    <input type="range" id="gridCols" min="1" max="5" value="3">
+                    <span id="gridColsValue">3</span>
+                    
+                    <label for="gridRows">Grid Rows:</label>
+                    <input type="range" id="gridRows" min="1" max="5" value="3">
+                    <span id="gridRowsValue">3</span>
+                    
+                    <label for="cellWidth">Cell Width (tiles):</label>
+                    <input type="range" id="cellWidth" min="8" max="20" value="16">
+                    <span id="cellWidthValue">16</span>
+                    
+                    <label for="cellHeight">Cell Height (tiles):</label>
+                    <input type="range" id="cellHeight" min="6" max="16" value="10">
+                    <span id="cellHeightValue">10</span>
+                    
+                    <label for="tilePixelSize">Tile Size (pixels):</label>
+                    <input type="range" id="tilePixelSize" min="16" max="48" value="32">
+                    <span id="tileSizeValue">32</span>
+                </div>
+                
+                <div class="control-group">
+                    <h3>Drawing Tools</h3>
+                    <button id="toggleTool" class="tool-button active">Toggle Tool</button>
+                    <button id="drawTool" class="tool-button">Draw Tool</button>
+                    <button id="eraseTool" class="tool-button">Erase Tool</button>
+                </div>
+                
+                <div class="control-group">
+                    <h3>Grid Actions</h3>
+                    <button id="clearGrid" class="clear-button">Clear All</button>
+                    <button id="fillGrid">Fill All</button>
+                </div>
+                
+                <div class="control-group">
+                    <h3>Cell Boundaries</h3>
+                    <label>
+                        <input type="checkbox" id="showBorders" checked>
+                        Show cell borders
+                    </label>
+                    <label for="borderColor">Border color:</label>
+                    <input type="color" id="borderColor" value="#0066CC">
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script src="js/level-editor.js"></script>
+</body>
+</html>
