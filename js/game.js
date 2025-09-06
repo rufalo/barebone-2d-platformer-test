@@ -67,13 +67,21 @@ class GameScene extends Phaser.Scene {
 
     create() {
         // Set world bounds
-        this.physics.world.setBounds(0, 0, 1200, 600);
+        this.physics.world.setBounds(0, 0, 1800, 800);
         
         // Create level
         this.level = new Level(this);
         
         // Create player
-        this.player = new Player(this, 100, 400);
+        this.player = new Player(this, 250, 680);
+        
+        // Create debug display
+        this.debugDisplay = new DebugDisplay(this, this.player);
+        
+        // Connect debug display to player's state manager
+        if (this.player.stateManager) {
+            this.debugDisplay.setStateManager(this.player.stateManager);
+        }
         
         // Connect debug menu to player
         if (window.debugMenu) {
@@ -82,16 +90,19 @@ class GameScene extends Phaser.Scene {
         
         // Create targets
         this.targets = this.physics.add.group();
-        new Target(this, 800, 300, this.targets);
-        new Target(this, 1000, 200, this.targets);
+        new Target(this, 800, 450, this.targets);
+        new Target(this, 1100, 350, this.targets);
+        new Target(this, 1300, 450, this.targets);
         
         // Create bullets group
         this.bullets = this.physics.add.group();
         
         // Create reset orbs (floating entities that reset abilities)
         this.resetOrbs = this.physics.add.staticGroup();
-        this.createResetOrb(400, 250);
-        this.createResetOrb(600, 150);
+        this.createResetOrb(400, 400);
+        this.createResetOrb(700, 250);
+        this.createResetOrb(1000, 320);
+        this.createResetOrb(1200, 450);
         
         // Set up collisions
         this.physics.add.collider(this.player.sprite, this.level.platforms);
@@ -136,7 +147,7 @@ class GameScene extends Phaser.Scene {
         
         // Camera follows player
         this.cameras.main.startFollow(this.player.sprite);
-        this.cameras.main.setBounds(0, 0, 1200, 600);
+        this.cameras.main.setBounds(0, 0, 1800, 800);
         
         // Debug info
         this.add.text(10, 10, 'Basic Platformer Character Test - v1.0.1', { 
@@ -147,6 +158,11 @@ class GameScene extends Phaser.Scene {
 
     update() {
         this.player.update();
+        
+        // Update debug display
+        if (this.debugDisplay) {
+            this.debugDisplay.update();
+        }
         
         // Update all targets
         this.targets.children.entries.forEach(target => {
@@ -203,8 +219,8 @@ class GameScene extends Phaser.Scene {
 // Game configuration
 const config = {
     type: Phaser.AUTO,
-    width: 800,
-    height: 600,
+    width: 1400,
+    height: 800,
     parent: 'game',
     backgroundColor: '#87CEEB',
     physics: {

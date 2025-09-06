@@ -20,37 +20,46 @@ class Level {
     }
     
     createLevel() {
-        // Ground platforms
-        this.createPlatform(64, 568, 'ground');
-        this.createPlatform(192, 568, 'ground');
-        this.createPlatform(320, 568, 'ground');
-        this.createPlatform(448, 568, 'ground');
-        this.createPlatform(576, 568, 'ground');
-        this.createPlatform(704, 568, 'ground');
-        this.createPlatform(832, 568, 'ground');
-        this.createPlatform(960, 568, 'ground');
-        this.createPlatform(1088, 568, 'ground');
+        // Ground platforms (positioned near bottom of 800px screen at Y=720)
+        // Extended ground coverage for wider screen with better spacing
+        this.createPlatform(64, 720, 'ground');
+        this.createPlatform(192, 720, 'ground');
+        this.createPlatform(320, 720, 'ground');
+        this.createPlatform(448, 720, 'ground');
+        this.createPlatform(576, 720, 'ground');
+        this.createPlatform(704, 720, 'ground');
+        this.createPlatform(832, 720, 'ground');
+        this.createPlatform(960, 720, 'ground');
+        this.createPlatform(1088, 720, 'ground');
+        this.createPlatform(1216, 720, 'ground');
+        this.createPlatform(1344, 720, 'ground');
+        this.createPlatform(1472, 720, 'ground');
+        this.createPlatform(1600, 720, 'ground');
         
-        // Mid-level platforms for jumping
-        this.createPlatform(200, 450, 'platform');
-        this.createPlatform(400, 380, 'platform');
-        this.createPlatform(600, 320, 'platform');
-        this.createPlatform(800, 280, 'platform');
-        this.createPlatform(1000, 220, 'platform');
+        // Mid-level platforms for jumping (spread across more vertical space)
+        this.createPlatform(200, 600, 'platform');
+        this.createPlatform(400, 530, 'platform');
+        this.createPlatform(600, 470, 'platform');
+        this.createPlatform(800, 410, 'platform');
+        this.createPlatform(1000, 350, 'platform');
         
-        // Higher platforms
-        this.createPlatform(300, 250, 'platform');
-        this.createPlatform(500, 180, 'platform');
-        this.createPlatform(700, 150, 'platform');
-        this.createPlatform(900, 100, 'platform');
+        // Higher platforms (more vertical spacing)
+        this.createPlatform(300, 400, 'platform');
+        this.createPlatform(500, 320, 'platform');
+        this.createPlatform(700, 280, 'platform');
+        this.createPlatform(900, 220, 'platform');
+        this.createPlatform(1100, 180, 'platform');
+        this.createPlatform(1300, 150, 'platform');
         
         // Some scattered platforms for parkour
-        this.createPlatform(150, 350, 'platform');
-        this.createPlatform(750, 380, 'platform');
-        this.createPlatform(950, 320, 'platform');
+        this.createPlatform(180, 500, 'platform'); // Moved inward from wall
+        this.createPlatform(650, 520, 'platform');
+        this.createPlatform(850, 460, 'platform');
+        this.createPlatform(1050, 480, 'platform');
+        this.createPlatform(1200, 380, 'platform'); // New platform for expanded area
         
-        // Create a moving platform (example for future expansion)
-        this.createMovingPlatform(400, 500, 600, 500);
+        // Create a moving platform (adjusted height)
+        this.createMovingPlatform(400, 650, 600, 650);
         
         // Create cliff structure for wall jump testing
         this.createCliff();
@@ -146,8 +155,8 @@ class Level {
     
     createLeftWall() {
         // Create a left-side wall for testing bidirectional wall jumping
-        const wallX = 50; // Left side of level  
-        const wallY = 368; // Same height as right cliff
+        const wallX = 150; // Moved inward from edge (was 50)
+        const wallY = 520; // Adjusted for new ground level (Y=720)
         
         // Create left wall using the cliff texture
         const leftWall = this.scene.physics.add.staticSprite(wallX, wallY, 'cliff');
@@ -160,18 +169,18 @@ class Level {
         this.walls.push(leftWall); // Store in walls array for detection
         
         // Add approach platform on the right for jumping toward left wall
-        const leftApproachPlatform = this.createPlatform(wallX + 150, 400, 'platform');
+        const leftApproachPlatform = this.createPlatform(wallX + 150, 550, 'platform');
         
         // Add landing platform at top of left wall
-        const leftTopPlatform = this.createPlatform(wallX - 96, 168, 'platform');
+        const leftTopPlatform = this.createPlatform(wallX - 96, 320, 'platform');
         
         console.log('Created left wall at x =', wallX);
     }
     
     createRightWall() {
         // Create a right-side wall for testing bidirectional wall jumping
-        const wallX = 1200; // Right side of level  
-        const wallY = 368; // Same height as left wall
+        const wallX = 1250; // Moved inward from edge (was 1400, screen is 1400px wide)
+        const wallY = 520; // Same height as left wall
         
         // Create right wall using the cliff texture
         const rightWall = this.scene.physics.add.staticSprite(wallX, wallY, 'cliff');
@@ -184,10 +193,10 @@ class Level {
         this.walls.push(rightWall); // Store in walls array for detection
         
         // Add approach platform on the left for jumping toward right wall
-        const rightApproachPlatform = this.createPlatform(wallX - 150, 400, 'platform');
+        const rightApproachPlatform = this.createPlatform(wallX - 150, 550, 'platform');
         
         // Add landing platform at top of right wall
-        const rightTopPlatform = this.createPlatform(wallX + 96, 168, 'platform');
+        const rightTopPlatform = this.createPlatform(wallX + 96, 320, 'platform');
         
         console.log('Created right wall at x =', wallX);
     }

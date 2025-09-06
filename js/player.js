@@ -118,6 +118,9 @@ class Player {
         this.cursors = scene.input.keyboard.createCursorKeys();
         this.keys = scene.input.keyboard.addKeys('W,A,S,D,X,Z,SHIFT,SPACE');
         
+        // Create state manager
+        this.stateManager = new BoostStateManager(this);
+        
         // Create ground detection
         this.setupGroundDetection();
     }
@@ -148,6 +151,9 @@ class Player {
     update() {
         const delta = this.scene.game.loop.delta;
         
+        // Update state manager first
+        this.stateManager.update(delta);
+        
         // Check if grounded
         this.checkGrounded();
         
@@ -156,7 +162,7 @@ class Player {
             this.dashTimer -= delta;
             if (this.dashTimer <= 0) {
                 this.isDashing = false;
-                this.sprite.setTint(0xffffff);
+                // Let state manager handle visual feedback
             }
         }
         
@@ -165,7 +171,7 @@ class Player {
             this.boostTimer -= delta;
             if (this.boostTimer <= 0) {
                 this.isBoosting = false;
-                // Don't reset tint here - let visual feedback system handle it
+                // Let state manager handle visual feedback
             }
         }
         
@@ -209,6 +215,9 @@ class Player {
         
         // Input handling
         this.handleInput();
+        
+        // Update visual feedback using state manager
+        this.updateVisualFeedback();
     }
     
     checkGrounded() {
@@ -511,6 +520,9 @@ class Player {
                 this.jumpBuffer = 0;
                 this.coyoteTimer = 0;
                 
+                // Notify state manager about jump
+                this.stateManager.startJump();
+                
                 // Handle slide-to-jump transition
                 if (this.isSliding) {
                     // Maintain horizontal momentum from slide
@@ -708,39 +720,31 @@ class Player {
         console.log(`Ground slide started: speed=${slideSpeed}, direction=${direction}, duration=${this.slideTimer}`);
     }
     
-    updateMovementVisuals() {
-        // Priority order for visual feedback (highest priority first)
-        if (this.isDashing) {
-            // Dash colors handled in performDash/performAirDash methods
-            return;
-        } else if (this.wallRunActivated || this.wallRunBoostActive) {
-            // WALL RUN - Sprint boost active while against wall (highest priority)
-            this.sprite.setTint(0x00FF00); // Bright green for wall run state
-        } else if (this.isWallSliding) {
-            // Wall sliding - blue for normal wall slide
-            this.sprite.setTint(0x00AAFF); // Blue for normal wall slide
-        } else if (this.isWallRunning) {
-            // Wall running - bright cyan
-            this.sprite.setTint(0x00FFFF);
-        } else if (this.isSliding) {
-            // Slide color - orange to distinguish from other states
-            if (this.isBoosting) {
-                this.sprite.setTint(0xFF8C00); // Dark orange for boost slide
-            } else {
-                this.sprite.setTint(0xFFA500); // Orange for regular slide
-            }
-        } else if (this.isCrouching && this.crouchVisualApplied) {
-            // Don't override the crouch color set in applyCrouchState
-            return;
-        } else if (this.isBoosting) {
-            this.sprite.setTint(0x00FF99); // Green when boosting (v2)
-        } else if (this.isSprinting) {
-            this.sprite.setTint(0xFFFF99); // Light yellow when boosting (v1)
-        } else if (!this.canDash) {
-            this.sprite.setTint(0x999999); // Gray when dash is on cooldown
+    updateVisualFeedback() {
+        // Use state manager for consistent visual feedback
+        const stateColor = this.stateManager.getStateColor();
+        const intensity = this.stateManager.getEnergyIntensity();
+        
+        // Apply some alpha variation based on energy intensity for boost states
+        if (this.stateManager.currentBoostState) {
+            // Slightly vary opacity based on energy level (0.7 to 1.0)
+            const alpha = 0.7 + (intensity * 0.3);
+            this.sprite.setAlpha(alpha);
         } else {
-            this.sprite.setTint(0xFFFFFF); // Normal color
+            this.sprite.setAlpha(1.0);
         }
+        
+        // Don't override crouch color when visually applied
+        if (this.isCrouching && this.crouchVisualApplied) {
+            return;
+        }
+        
+        this.sprite.setTint(stateColor);
+    }
+    
+    // Legacy method for compatibility - now calls new visual feedback
+    updateMovementVisuals() {
+        this.updateVisualFeedback();
     }
     
     performBoost(direction) {
@@ -756,15 +760,15 @@ class Player {
             return;
         }
         
-        this.isBoosting = true;
-        this.boostTimer = boostConfig.duration.value;
-        this.boostDirection = direction;
-        this.lastBoostTime = this.scene.time.now;
-        
-        // Visual effect for boost
-        this.sprite.setTint(0x00FF99); // Green tint for boost
-        
-        // Don't apply velocity directly - let normal movement handling apply boost speed
+        // Try to start boost using state manager
+        if (this.stateManager.startBoost()) {
+            this.isBoosting = true;
+            this.boostTimer = boostConfig.duration.value;
+            this.boostDirection = direction;
+            this.lastBoostTime = this.scene.time.now;
+            
+            // Don't apply velocity directly - let normal movement handling apply boost speed
+        }
     }
     
     handleDashing() {
@@ -779,6 +783,9 @@ class Player {
     
     performDash(direction) {
         if (this.isDashing || !this.canDash || !this.config.abilities.dashEnabled) return;
+        
+        // Notify state manager about dash
+        this.stateManager.startDash();
         
         const dashConfig = this.getCurrentDashConfig();
         
