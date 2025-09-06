@@ -1,137 +1,251 @@
-# Next Steps for Platformer Development
+# Next Steps: Hierarchical Grid Level Editor System
 
-## Immediate Priority Features
+## Current Status
+The state machine implementation is complete and functional. Now focusing on building a hierarchical grid-based level editor for rapid level creation and modular world building.
 
-### Player State Machine Implementation
+## Level Editor Vision: Grid of Grids System
 
-#### Current State Management Issues:
-- Multiple overlapping boolean flags create conflicts
-- Wall run visual feedback doesn't persist properly  
-- State transitions have timing race conditions
-- Visual priority system is fragile and unreliable
+### Core Concept
+A **two-layer hierarchical grid system** that enables both rapid level blocking and detailed refinement:
 
-#### Boost Chain State Machine Architecture:
-- **Base States** (exclusive): idle, walking, running, jumping, falling, wall_sliding, crouching, dashing, sliding
-- **Boost States** (enhancement layer): boost_ready, boost_active, boost_jump, boost_dash, boost_wallrun
-- **Status Flags** (concurrent): boost_chainable, boost_energy_full, boost_momentum, can_wall_kick, facing_direction
+1. **World Grid**: 8x8 grid of reusable level cells
+2. **Level Cells**: Individual grids (e.g., 10x16 tiles) that can be named, stored, and reused
+3. **Tile Level**: Each tile represents blocking (0 = empty, 1 = filled) for rapid level layout
 
-#### Implementation Requirements:
-- **BoostStateManager class**: Centralized state management
-- **Energy System**: 300ms base, +200ms chain extensions, 1000ms max, 500ms cooldown
-- **Visual Feedback System**: State-based colors with energy intensity
-- **Chain Timing Windows**: Jump (200ms), dash (150ms), wall (300ms) extensions
+### Hierarchy Structure
+```
+World Map (8x8 level cells)  
+└── Level Cell (10x16 tiles each - configurable)
+    └── Tile (blocking: 0 or 1)
+```
 
-#### Key Benefits:
-- Eliminates competing boolean flag conflicts
-- Provides clear visual feedback hierarchy  
-- Enables boost chaining mechanics (boost→jump→dash→wallrun)
-- Creates foundation for future states (hurt, invincible, etc.)
+## Hierarchical Level Editor Features
 
-### Platform System Improvements
+### 🌍 **World Grid System (8x8 Level Cells)**
+- **World View**: Visual 8x8 grid showing level cell positions
+- **Cell Management**: Drag cells from library to world positions
+- **Connection Visualization**: Show how cells connect to each other
+- **World Testing**: Play entire world maps seamlessly
+- **Configurable Size**: Easy to adjust world grid dimensions for testing
 
-#### Current Platform Issues:
-- Bounds-based detection can be imprecise
-- Player gets "carried" even when slightly beside platform
-- No clear separation between collision and "riding" detection
+### 🧩 **Level Cell System (Reusable Components)**
+- **Named Cells**: Store cells with descriptive names ("forest_platform_01", "vertical_shaft")
+- **Cell Library**: Browse and manage collection of reusable level segments
+- **Cell Editor**: Edit individual cells with tile-level blocking grid
+- **Connection Metadata**: Define how cells connect at edges (future feature)
+- **Cell Variations**: Support different versions of similar cell types (future feature)
 
-#### Trigger Zone Approach:
-- **Separate collision boxes**:
-  - **Solid collision**: Normal platform physics (can't pass through)
-  - **Trigger zone**: Invisible area on top for "riding" detection
-- **Trigger zone benefits**:
-  - More precise "on platform" detection
-  - Can be larger/smaller than visual platform
-  - Clear separation of concerns
-  - Better debug visualization
+### 🎨 **Tile-Level Blocking Editor**
+- **Simple Grid**: Clickable cells with 0 (empty) or 1 (filled) states
+- **Visual Representation**: Black/white blocks for immediate feedback
+- **Drawing Tools**:
+  - Click to toggle individual tiles
+  - Click-drag to fill multiple tiles
+  - Brush tools (future feature)
+  - Flood fill (future feature)
+- **Configurable Dimensions**: Easy to test different cell sizes (10x16, 8x12, etc.)
 
-#### Implementation Concepts:
-- **Platform components**: 
-  - Visual sprite (what you see)
-  - Physics body (solid collision)  
-  - Trigger zone (riding detection)
-- **Trigger events**: `onTriggerEnter`, `onTriggerStay`, `onTriggerExit`
-- **Multi-platform handling**: Player can only "ride" one platform at a time
-- **Debug visualization**: Show trigger zones in debug mode
+### 🔄 **Multi-Scale Interface**
+- **World View**: See entire 8x8 grid of level cells
+- **Cell View**: Zoom into individual cell to edit tiles
+- **Seamless Transitions**: Click cell in world view → edit that cell's tiles
+- **Cross-Cell Drawing**: Draw platforms spanning multiple cells (future feature)
+- **Visual Boundaries**: Clear separation between level cells
 
-#### Advanced Platform Features:
-- **One-way platforms**: Can jump through from below
-- **Moving platform chains**: Platforms that follow paths
-- **Conditional platforms**: Appear/disappear based on conditions
-- **Platform types**: Ice (slippery), conveyor belts, bouncy
+### 💾 **Data Management**
+- **Hierarchical Storage**: World maps reference cell library
+- **JSON Format**: Human-readable and version-control friendly
+- **Cell Reusability**: Same cell can be used in multiple worlds
+- **Import/Export**: Share cells and worlds between projects
 
-## Future Development Ideas
+## Implementation Architecture
 
-### Combat & Enemies
-- **Basic enemies**: Simple AI patterns (patrol, chase, jump)
-- **Enemy types**: Ground walkers, flying enemies, turret-style shooters
-- **Combat mechanics**: Stomp-to-kill, shoot-to-kill, invincibility frames
-- **Health system**: Player HP, enemy HP, damage feedback
+### Phase 1: Single Cell Editor (Focus)
+#### Tile Grid Editor
+- **Canvas System**: HTML5 Canvas with clickable grid cells
+- **Data Structure**: 2D array for tile states (0 = empty, 1 = filled)
+- **Visual Rendering**: Simple black/white blocks for immediate feedback
+- **Interaction**: Click to toggle tiles, click-drag for continuous drawing
+- **Configurable Size**: Easy testing of different cell dimensions
 
-### Level Design & Progression
-- **Multiple levels**: Level loading system, progression tracking
-- **Checkpoints**: Save points within levels
-- **Collectibles**: Coins, power-ups, ability unlocks
-- **Environmental hazards**: Spikes, pits, moving hazards
+#### Basic Tools
+- **Toggle Tool**: Click individual tiles to toggle on/off
+- **Drawing Tool**: Click-drag to fill multiple tiles
+- **Clear Tool**: Reset entire cell to empty
+- **Fill Tool**: Set entire cell to filled
 
-### Advanced Movement
-- **Enhanced wall mechanics**: Wall run visual persistence, context-sensitive wall kicks
-- **Swimming**: Water physics, underwater movement
-- **Grappling hook**: Point-and-swing mechanics
-- **Movement v3**: New experimental movement system with boost integration
+#### Cell Management
+- **Save Cell**: Store current cell with a name
+- **Load Cell**: Retrieve saved cell from library
+- **Cell Preview**: Thumbnail view of saved cells
+- **Basic Metadata**: Cell name and dimensions
 
-### Visual & Polish
-- **Particle effects**: Enhanced feedback for actions
-- **Screen effects**: Camera shake improvements, screen transitions
-- **Real sprites**: Replace colored rectangles with actual art
-- **Animations**: Sprite animations for movement states
+### Phase 2: Cell Library System
+#### Storage System
+- **Named Cells**: Save cells with descriptive names
+- **Cell Browser**: Grid view of all saved cells with thumbnails
+- **Import/Export**: Load/save individual cells to JSON files
+- **Cell Validation**: Basic checks for valid tile data
 
-### Audio System
-- **Sound effects**: Jump, dash, shoot, enemy hit sounds
-- **Background music**: Level themes, menu music
-- **Audio feedback**: Directional audio, volume controls
+#### Enhanced Cell Editor  
+- **Undo/Redo**: Track changes within cell editing
+- **Selection Tools**: Select regions of tiles for operations
+- **Copy/Paste**: Duplicate sections within cells
+- **Grid Settings**: Configurable grid size and visual options
 
-### UI & Menus
-- **Main menu**: Start, options, level select
-- **Pause system**: In-game pause with resume/restart options
-- **HUD elements**: Health, score, ability cooldown indicators
+### Phase 3: World Grid System
+#### World Editor Interface
+- **8x8 World Grid**: Visual grid showing level cell positions
+- **Cell Assignment**: Drag cells from library to world positions
+- **World View**: See all cells in context
+- **Cell Boundaries**: Visual separation between level cells
 
-### Technical Infrastructure
-- **Save system**: Game progress, settings persistence
-- **Performance**: Optimization, object pooling
-- **Mobile support**: Touch controls, responsive scaling
+#### World Management
+- **World Save/Load**: Store entire world configurations
+- **World Testing**: Generate playable level from world grid
+- **World Validation**: Check cell compatibility and connections
 
-## Integration Notes
+#### Integration with Game
+- **Level Generation**: Convert world grid + cells to game level format
+- **Collision Creation**: Generate platforms from tile data
+- **Test Mode**: Spawn player and test generated level
 
-The platform system improvements would integrate well with the existing movement v1/v2 framework:
+### Phase 4: Advanced Features (Future)
+- Cross-cell drawing capabilities
+- Connection system between cells  
+- Cell rotation and mirroring
+- Advanced drawing tools (brush sizes, flood fill)
+- Performance optimization for large worlds
 
-- **Improved platforms** would make all movement feel more reliable
-- **Platform trigger zones** would work seamlessly with current dash/slide mechanics
+## Technical Implementation Strategy
 
-## Recommended Implementation Order
+### Hierarchical Data Structure
+```json
+{
+  "worldMap": {
+    "name": "Forest World",
+    "size": { "width": 8, "height": 8 },
+    "cellGrid": [
+      ["forest_start", "platform_01", null, null, ...],
+      [null, "vertical_shaft", "jump_challenge", null, ...],
+      ...
+    ]
+  },
+  "cellLibrary": {
+    "forest_start": {
+      "name": "Forest Start",
+      "size": { "width": 10, "height": 16 },
+      "tileData": [
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ...
+        [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      ],
+      "metadata": {
+        "connections": { "top": "open", "bottom": "ground", "left": "wall", "right": "open" },
+        "theme": "forest",
+        "difficulty": "easy"
+      }
+    }
+  }
+}
+```
 
-1. **Player State Machine** - Fixes fundamental state management and visual feedback issues
-2. **BoostStateManager Implementation** - Enables boost chaining and reliable wall run indicators
-3. **Platform trigger zones** - Improves fundamental movement reliability  
-4. **Advanced platform types** - Expand level design possibilities
+### Editor Architecture Classes
+- **LevelEditor**: Main controller for hierarchical editor modes
+- **WorldGridEditor**: Manages 8x8 world cell grid
+- **CellEditor**: Handles individual cell tile editing  
+- **CellLibrary**: Storage and management of reusable cells
+- **TileGrid**: Core tile editing with 2D array backing
+- **LevelGenerator**: Converts editor data to playable game levels
 
-## State Machine Implementation Plan
+### Player Scale Integration
+- **Tile Size**: Each tile = 16x16 pixels (configurable)
+- **Cell Size**: Each cell = configurable tiles (e.g., 10x16 = 160x256 pixels)
+- **Player Fitting**: Player height ~2 tiles, crouch height ~1 tile
+- **Collision Generation**: Convert filled tiles to platform collision boxes
 
-### Phase 1: Core Architecture
-1. Create `BoostStateManager` class with state categories
-2. Replace boolean flags with state machine methods
-3. Implement energy system with configurable timers
+### Workflow Integration  
+- **Editor Mode Toggle**: Switch between edit/play modes
+- **Live Testing**: Generate level from current world/cells and test immediately
+- **Debug Integration**: Show tile grid overlay in debug mode
+- **State Machine**: Editor states work alongside existing player state machine
 
-### Phase 2: Visual System Overhaul  
-1. State-based visual feedback (replaces current fragile system)
-2. Energy intensity indicators
-3. Chain combo visual effects
+## Development Milestones
 
-### Phase 3: Boost Chain Mechanics
-1. Chain timing windows and energy extensions
-2. Combo system (boost→jump→dash→wallrun)
-3. Debug visualization for state transitions
+### Phase 1: Single Cell Editor (Priority Focus)
+- [ ] Canvas-based tile grid with configurable dimensions
+- [ ] Click/drag interaction for toggling tiles (0/1)
+- [ ] Visual rendering of black/white blocks
+- [ ] Basic cell save/load with names
+- [ ] Cell preview thumbnails
+- [ ] Test single cell in game mode
 
-### Phase 4: Integration & Testing
-1. Update debug menu for new state system
-2. Test all existing movement interactions
-3. Performance optimization and cleanup
+### Phase 2: Cell Library System  
+- [ ] Named cell storage system
+- [ ] Cell browser with thumbnail grid
+- [ ] Import/export individual cells
+- [ ] Undo/redo within cell editing
+- [ ] Copy/paste within cells
+- [ ] Cell validation and metadata
+
+### Phase 3: World Grid Integration
+- [ ] 8x8 world grid interface
+- [ ] Drag cells from library to world positions
+- [ ] World save/load functionality
+- [ ] Generate complete level from world + cells
+- [ ] World-level testing and validation
+
+### Phase 4: Polish & Advanced Features
+- [ ] Cross-cell drawing capabilities
+- [ ] Advanced tools (brush sizes, flood fill)
+- [ ] Cell rotation and mirroring
+- [ ] Connection system between cells
+- [ ] Performance optimization
+
+## Benefits of Hierarchical Grid System
+
+### Rapid Level Creation
+- **Blocking Speed**: Sketch level layouts in minutes with tile-based blocking
+- **Modular Design**: Reuse proven level segments across multiple worlds
+- **Visual Feedback**: Immediate black/white representation of walkable areas
+- **Scale Testing**: Easy to test different cell and tile dimensions
+
+### Content Reusability  
+- **Cell Library**: Build collection of reusable level components
+- **Mix & Match**: Combine cells to create diverse worlds quickly
+- **Consistency**: Standardized cell connections and proportions
+- **Iteration**: Refine individual cells and see changes across all worlds using them
+
+### Workflow Efficiency
+- **Multi-Scale Editing**: Work at world level (cell placement) or detail level (tile editing)
+- **Focused Design**: Edit cells in isolation, then see them in context
+- **Quick Testing**: Generate and test levels immediately from grid data
+- **Easy Sharing**: Export/import cells and worlds as JSON files
+
+## Design Principles
+
+### Player-Centric Scale
+- **Tile Size**: 16x16 pixels matches player scale (~32px tall)
+- **Cell Size**: Configurable but designed around player movement patterns
+- **Blocking Logic**: Simple 0/1 represents walkable vs empty space
+- **Natural Proportions**: Cell dimensions feel right for platformer gameplay
+
+### Simplicity First
+- **Start Simple**: Basic black/white tile toggling before advanced features
+- **Configurable**: Easy to test different sizes and find what works
+- **Expandable**: Foundation for more complex features later
+- **Low Risk**: Simple enough to scrap and restart if approach doesn't work
+
+### Technical Foundation
+- **Data Structure**: Simple 2D arrays for performance and clarity
+- **JSON Storage**: Human-readable and version-control friendly
+- **Canvas Rendering**: Efficient for grid-based editing interface
+- **Game Integration**: Converts editor data to existing level system
+
+---
+
+**Next Action**: Begin Phase 1 - Single Cell Editor Implementation
+**Focus**: Canvas-based tile grid with click/drag interaction
+**Priority**: High - Foundation for entire hierarchical system
+**Approach**: Start simple, make it configurable, ensure it works well before adding complexity
