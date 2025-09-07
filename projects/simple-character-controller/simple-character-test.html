@@ -184,6 +184,9 @@
                 this.showingJumpEffect = false;
                 this.isBoostJumping = false;
                 
+                // Store current color for texture updates
+                this.currentColor = 0x4A90E2; // Default blue
+                
                 // Movement properties
                 this.walkSpeed = 140;
                 this.jumpVelocity = 450;
@@ -306,12 +309,7 @@
                         this.boostTimer = this.boostDuration;
                         
                         // Visual feedback
-                        this.sprite.setTint(0x00ff00); // Green for boost
-                        this.scene.time.delayedCall(100, () => {
-                            if (!this.isDashing) {
-                                this.sprite.setTint(0xffffff);
-                            }
-                        });
+                        this.updatePlayerColor(0x00ff00); // Green for boost
                     }
                 }
             }
@@ -400,7 +398,7 @@
                 }
                 
                 // Visual feedback
-                this.sprite.setTint(0xff0000); // Red for dash
+                this.updatePlayerColor(0x000080); // Dark blue for dash
             }
             
             performGroundSlide() {
@@ -420,7 +418,24 @@
                 this.boostTimer = 0;
                 
                 // Visual feedback
-                this.sprite.setTint(0xff8800); // Orange for ground slide
+                this.updatePlayerColor(0xff8800); // Orange for ground slide
+            }
+            
+            updatePlayerColor(newColor) {
+                // Only update if color actually changed
+                if (this.currentColor === newColor) return;
+                
+                this.currentColor = newColor;
+                
+                // Create new texture with the actual color
+                let graphics = this.scene.add.graphics()
+                    .fillStyle(newColor)
+                    .fillRect(0, 0, 32, 32);
+                graphics.generateTexture('player_' + newColor.toString(16), 32, 32);
+                graphics.destroy();
+                
+                // Update sprite texture
+                this.sprite.setTexture('player_' + newColor.toString(16));
             }
             
             updateVisuals() {
@@ -435,19 +450,19 @@
                     return;
                 }
                 
-                // State-based color system
-                if (this.isBoosted && this.isGrounded) {
-                    // Boost ready on ground
-                    this.sprite.setTint(0x00ff00); // Green for boost
-                } else if (this.isBoostJumping) {
-                    // Boost jumping - darker green
-                    this.sprite.setTint(0x00aa00);
+                // State-based color system (priority order matters!)
+                if (this.isBoostJumping) {
+                    // Boost jumping - orange
+                    this.updatePlayerColor(0xff8800);
+                } else if (this.isBoosted && this.isGrounded) {
+                    // Boost ready on ground - bright green
+                    this.updatePlayerColor(0x00ff00);
                 } else if (!this.isGrounded && this.sprite.body.velocity.y < -50) {
                     // Normal jumping with upward momentum - yellow
-                    this.sprite.setTint(0xaaaa00);
+                    this.updatePlayerColor(0xffff00);
                 } else {
-                    // Default state
-                    this.sprite.setTint(0xffffff); // Normal
+                    // Default state - blue
+                    this.updatePlayerColor(0x4A90E2);
                 }
             }
             
