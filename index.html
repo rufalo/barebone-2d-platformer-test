@@ -3,126 +3,254 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Basic Platformer Character Test</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Platformer Project Hub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            width: 100%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .projects-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .project-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .project-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .project-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+
+        .project-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            display: block;
+        }
+
+        .project-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .project-description {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .project-features {
+            list-style: none;
+            margin-bottom: 25px;
+        }
+
+        .project-features li {
+            padding: 5px 0;
+            color: #555;
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .project-features li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .project-link {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: transform 0.2s ease;
+            text-align: center;
+            width: 100%;
+        }
+
+        .project-link:hover {
+            transform: scale(1.05);
+        }
+
+        .footer {
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+            margin-top: 40px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .status-complete {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .status-active {
+            background: #FF9800;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .projects-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .project-card {
+                padding: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <div class="main-layout">
-        <div id="debug-panel">
-            <h3>Debug Controls</h3>
-            
-            <div class="debug-section">
-                <h4>Abilities</h4>
-                <label>
-                    <input type="checkbox" id="doubleJumpEnabled" checked>
-                    Double Jump
-                </label>
-                <label>
-                    <input type="checkbox" id="dashEnabled" checked>
-                    Dash
-                </label>
-                <label>
-                    <input type="checkbox" id="boostEnabled" checked>
-                    Boost
-                </label>
-            </div>
-            
-            <div class="debug-section">
-                <h4>Movement System</h4>
-                <div class="version-control">
-                    <label>System:</label>
-                    <select id="movementSystemSelect">
-                        <option value="v1">Traditional Movement (Hold Sprint + Simple Dash)</option>
-                        <option value="v2">Boost-Integrated Movement (Tap Boost + Air Dash)</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="debug-section">
-                <h4>Movement Properties</h4>
-                <div class="property-control">
-                    <label>Speed: <span id="speedValue">140</span></label>
-                    <input type="range" id="speedSlider" min="50" max="300" value="140">
-                </div>
-            </div>
-            
-            <div class="debug-section" id="boostSection">
-                <h4>Boost Properties <span id="boostVersionLabel">(v1)</span></h4>
-                <div class="property-control">
-                    <label>Boost Speed: <span id="boostSpeedValue">320</span></label>
-                    <input type="range" id="boostSpeedSlider" min="200" max="500" value="320">
-                </div>
-                <div class="property-control" id="boostDurationControl">
-                    <label>Boost Duration: <span id="boostDurationValue">350</span></label>
-                    <input type="range" id="boostDurationSlider" min="100" max="800" value="350">
-                </div>
-                <div class="property-control" id="boostJumpWindowControl">
-                    <label>Jump Window: <span id="boostJumpWindowValue">200</span></label>
-                    <input type="range" id="boostJumpWindowSlider" min="50" max="500" value="200">
-                </div>
-                <div class="property-control" id="boostAirMomentumDurationControl">
-                    <label>Air Momentum Duration: <span id="boostAirMomentumDurationValue">300</span></label>
-                    <input type="range" id="boostAirMomentumDurationSlider" min="100" max="1000" value="300">
-                </div>
-            </div>
-            
-            <div class="debug-section" id="dashSection">
-                <h4>Dash Properties <span id="dashVersionLabel">(v1)</span></h4>
-                <div class="property-control">
-                    <label>Dash Speed: <span id="dashSpeedValue">600</span></label>
-                    <input type="range" id="dashSpeedSlider" min="300" max="1000" value="600">
-                </div>
-                <div class="property-control">
-                    <label>Dash Duration: <span id="dashDurationValue">300</span></label>
-                    <input type="range" id="dashDurationSlider" min="100" max="500" value="300">
-                </div>
-                <div class="property-control">
-                    <label>Dash Cooldown: <span id="dashCooldownValue">1000</span></label>
-                    <input type="range" id="dashCooldownSlider" min="200" max="2000" value="1000">
-                </div>
-            </div>
-            
-            <div class="debug-section">
-                <h4>Jump Properties</h4>
-                <div class="property-control">
-                    <label>Jump Velocity: <span id="jumpVelocityValue">450</span></label>
-                    <input type="range" id="jumpVelocitySlider" min="200" max="700" value="450">
-                </div>
-                <div class="property-control">
-                    <label>Coyote Time: <span id="coyoteTimeValue">100</span></label>
-                    <input type="range" id="coyoteTimeSlider" min="50" max="300" value="100">
-                </div>
-                <div class="property-control">
-                    <label>Jump Buffer: <span id="jumpBufferValue">100</span></label>
-                    <input type="range" id="jumpBufferSlider" min="50" max="300" value="100">
-                </div>
-            </div>
-            
-            <button id="resetDefaults">Reset to Defaults</button>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Platformer Project Hub</h1>
+            <p>Choose your adventure - Different character controllers and tools for game development</p>
         </div>
-        
-        <div id="game-container">
-            <h1>Basic Platformer Character Test</h1>
-            <div id="game"></div>
-            <div id="controls">
-                <p><strong>Controls:</strong></p>
-                <p>Arrow Keys / WASD - Move</p>
-                <p>Space - Jump</p>
-                <p>Shift - Sprint</p>
-                <p>X - Dash</p>
-                <p>S/Down - Crouch</p>
-                <p>Z - Shoot</p>
+
+        <div class="projects-grid">
+            <!-- Original Platformer -->
+            <div class="project-card">
+                <div class="project-icon">🎯</div>
+                <div class="project-title">
+                    Original Platformer
+                    <span class="status-badge status-complete">Complete</span>
+                </div>
+                <div class="project-description">
+                    A complete 2D platformer with advanced character controller, shooting system, and comprehensive debug tools.
+                </div>
+                <ul class="project-features">
+                    <li>Dual movement systems (v1/v2)</li>
+                    <li>Wall sliding & wall kicking</li>
+                    <li>Shooting system with targets</li>
+                    <li>Moving platforms</li>
+                    <li>Real-time debug controls</li>
+                </ul>
+                <a href="projects/original-platformer/index.html" class="project-link">
+                    🚀 Play Game
+                </a>
             </div>
+
+            <!-- Simple Character Controller -->
+            <div class="project-card">
+                <div class="project-icon">⚡</div>
+                <div class="project-title">
+                    Simple Character Controller
+                    <span class="status-badge status-complete">Complete</span>
+                </div>
+                <div class="project-description">
+                    Clean, streamlined character controller focused on core movement mechanics and intuitive controls.
+                </div>
+                <ul class="project-features">
+                    <li>Boost + dash integration</li>
+                    <li>State-based visual feedback</li>
+                    <li>Responsive movement feel</li>
+                    <li>Real-time state display</li>
+                    <li>Perfect for testing mechanics</li>
+                </ul>
+                <a href="projects/simple-character-controller/simple-character-test.html" class="project-link">
+                    🎮 Test Movement
+                </a>
+            </div>
+
+            <!-- Level Editor -->
+            <div class="project-card">
+                <div class="project-icon">🛠️</div>
+                <div class="project-title">
+                    Level Editor
+                    <span class="status-badge status-active">Room Blockout</span>
+                </div>
+                <div class="project-description">
+                    Professional hierarchical level editor for rapid level creation and modular world building.
+                </div>
+                <ul class="project-features">
+                    <li>9x9 cell grid system</li>
+                    <li>Star pattern brushes</li>
+                    <li>Visual cell library</li>
+                    <li>Drag & drop functionality</li>
+                    <li>Auto-save to localStorage</li>
+                </ul>
+                <a href="projects/level-editor/level-editor.html" class="project-link">
+                    🎨 Create Levels
+                </a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>🎮 Platformer Character Test Project • Last Updated: 2025-01-09</p>
+            <p>Each project is self-contained with its own documentation and features</p>
         </div>
     </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
-    <script src="js/debug.js"></script>
-    <script src="js/boostStateManager.js"></script>
-    <script src="js/debugDisplay.js"></script>
-    <script src="js/player.js"></script>
-    <script src="js/level.js"></script>
-    <script src="js/target.js"></script>
-    <script src="js/game.js"></script>
 </body>
 </html>

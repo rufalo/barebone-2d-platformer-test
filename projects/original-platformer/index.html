@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Basic Platformer Character Test</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="main-layout">
+        <div id="debug-panel">
+            <h3>Debug Controls</h3>
+            
+            <div class="debug-section">
+                <h4>Abilities</h4>
+                <label>
+                    <input type="checkbox" id="doubleJumpEnabled" checked>
+                    Double Jump
+                </label>
+                <label>
+                    <input type="checkbox" id="dashEnabled" checked>
+                    Dash
+                </label>
+                <label>
+                    <input type="checkbox" id="boostEnabled" checked>
+                    Boost
+                </label>
+            </div>
+            
+            <div class="debug-section">
+                <h4>Movement System</h4>
+                <div class="version-control">
+                    <label>System:</label>
+                    <select id="movementSystemSelect">
+                        <option value="v1">Traditional Movement (Hold Sprint + Simple Dash)</option>
+                        <option value="v2">Boost-Integrated Movement (Tap Boost + Air Dash)</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h4>Movement Properties</h4>
+                <div class="property-control">
+                    <label>Speed: <span id="speedValue">140</span></label>
+                    <input type="range" id="speedSlider" min="50" max="300" value="140">
+                </div>
+            </div>
+            
+            <div class="debug-section" id="boostSection">
+                <h4>Boost Properties <span id="boostVersionLabel">(v1)</span></h4>
+                <div class="property-control">
+                    <label>Boost Speed: <span id="boostSpeedValue">320</span></label>
+                    <input type="range" id="boostSpeedSlider" min="200" max="500" value="320">
+                </div>
+                <div class="property-control" id="boostDurationControl">
+                    <label>Boost Duration: <span id="boostDurationValue">350</span></label>
+                    <input type="range" id="boostDurationSlider" min="100" max="800" value="350">
+                </div>
+                <div class="property-control" id="boostJumpWindowControl">
+                    <label>Jump Window: <span id="boostJumpWindowValue">200</span></label>
+                    <input type="range" id="boostJumpWindowSlider" min="50" max="500" value="200">
+                </div>
+                <div class="property-control" id="boostAirMomentumDurationControl">
+                    <label>Air Momentum Duration: <span id="boostAirMomentumDurationValue">300</span></label>
+                    <input type="range" id="boostAirMomentumDurationSlider" min="100" max="1000" value="300">
+                </div>
+            </div>
+            
+            <div class="debug-section" id="dashSection">
+                <h4>Dash Properties <span id="dashVersionLabel">(v1)</span></h4>
+                <div class="property-control">
+                    <label>Dash Speed: <span id="dashSpeedValue">600</span></label>
+                    <input type="range" id="dashSpeedSlider" min="300" max="1000" value="600">
+                </div>
+                <div class="property-control">
+                    <label>Dash Duration: <span id="dashDurationValue">300</span></label>
+                    <input type="range" id="dashDurationSlider" min="100" max="500" value="300">
+                </div>
+                <div class="property-control">
+                    <label>Dash Cooldown: <span id="dashCooldownValue">1000</span></label>
+                    <input type="range" id="dashCooldownSlider" min="200" max="2000" value="1000">
+                </div>
+            </div>
+            
+            <div class="debug-section">
+                <h4>Jump Properties</h4>
+                <div class="property-control">
+                    <label>Jump Velocity: <span id="jumpVelocityValue">450</span></label>
+                    <input type="range" id="jumpVelocitySlider" min="200" max="700" value="450">
+                </div>
+                <div class="property-control">
+                    <label>Coyote Time: <span id="coyoteTimeValue">100</span></label>
+                    <input type="range" id="coyoteTimeSlider" min="50" max="300" value="100">
+                </div>
+                <div class="property-control">
+                    <label>Jump Buffer: <span id="jumpBufferValue">100</span></label>
+                    <input type="range" id="jumpBufferSlider" min="50" max="300" value="100">
+                </div>
+            </div>
+            
+            <button id="resetDefaults">Reset to Defaults</button>
+        </div>
+        
+        <div id="game-container">
+            <h1>Basic Platformer Character Test</h1>
+            <div id="game"></div>
+            <div id="controls">
+                <p><strong>Controls:</strong></p>
+                <p>Arrow Keys / WASD - Move</p>
+                <p>Space - Jump</p>
+                <p>Shift - Sprint</p>
+                <p>X - Dash</p>
+                <p>S/Down - Crouch</p>
+                <p>Z - Shoot</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    <script src="js/debug.js"></script>
+    <script src="js/boostStateManager.js"></script>
+    <script src="js/debugDisplay.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/level.js"></script>
+    <script src="js/target.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
