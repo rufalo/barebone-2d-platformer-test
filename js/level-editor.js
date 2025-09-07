@@ -3,34 +3,77 @@ class LevelEditor {
         this.canvas = document.getElementById('tileCanvas');
         this.ctx = this.canvas.getContext('2d');
         
-        // Multi-cell grid configuration
-        this.gridCols = 3;        // Number of cells horizontally
-        this.gridRows = 3;        // Number of cells vertically
-        this.cellWidth = 16;      // Tiles per cell width
-        this.cellHeight = 10;     // Tiles per cell height
+        // Multi-cell room configuration
+        this.totalGridCols = 9;   // Total number of cells horizontally
+        this.totalGridRows = 9;   // Total number of cells vertically
+        this.cellWidth = 8;       // Tiles per cell width
+        this.cellHeight = 5;      // Tiles per cell height
         this.tileSize = 32;       // Pixels per tile
         
-        // Total dimensions
-        this.totalWidth = this.gridCols * this.cellWidth;   // 48 tiles
-        this.totalHeight = this.gridRows * this.cellHeight;  // 30 tiles
+        // Viewport configuration
+        this.viewportCols = 3;    // Number of cells shown horizontally
+        this.viewportRows = 3;    // Number of cells shown vertically
+        this.viewportX = 3;       // Viewport position in room grid (center of 9x9)
+        this.viewportY = 3;       // Viewport position in room grid (center of 9x9)
+        this.zoom = 1.0;          // Zoom level
         
-        // Multi-cell tile data - 2D array (0 = empty, 1 = filled)
+        // Canvas size (fixed)
+        this.canvasWidth = 800;
+        this.canvasHeight = 600;
+        
+        // Viewport offset for smooth panning (in pixels)
+        this.viewportOffsetX = 0;
+        this.viewportOffsetY = 0;
+        
+        // Total dimensions
+        this.totalWidth = this.totalGridCols * this.cellWidth;   // 144 tiles
+        this.totalHeight = this.totalGridRows * this.cellHeight;  // 90 tiles
+        this.viewportTileWidth = this.viewportCols * this.cellWidth;    // 48 tiles
+        this.viewportTileHeight = this.viewportRows * this.cellHeight;  // 30 tiles
+        
+        // Multi-cell tile data - 2D array (0 = empty, 1 = blockout, 2 = connection)
         this.tileData = [];
         
+        // Cell activity state - tracks which cells have content
+        this.activeCells = new Set(); // Set of "x,y" strings for active cells
+        
+        // Drawing modes
+        this.currentMode = 'blockout'; // 'blockout', 'selectCell', 'cellOpening', 'clone'
+        this.selectedCell = null; // {x, y} in cell coordinates
+        this.isDraggingCell = false;
+        this.dragStartCell = null;
+        this.swapMode = true; // Default to swap mode enabled
+        this.isCloneMode = false;
+        
         // Drawing state
-        this.currentTool = 'toggle';
         this.isDrawing = false;
         this.lastDrawnTile = null;
+        this.currentTileType = 1; // 1 = blockout, 2 = cell opening
+        this.brushSize = 1; // Brush size for drawing
+        
+        // Pan state
+        this.isPanning = false;
+        this.lastPanX = 0;
+        this.lastPanY = 0;
+        
+        // Brush preview
+        this.showBrushPreview = false;
+        this.brushPreviewTile = null;
+        
+        // Canvas drop zone for cell saving
+        this.showCanvasDropZone = false;
         
         // Visual settings
         this.showBorders = true;
-        this.borderColor = '#0066CC';
+        this.borderColor = '#4d9fff';
         
         // Initialize
         this.initializeTileData();
         this.setupEventListeners();
         this.setupUI();
         this.updateCanvasSize();
+        this.setMode('blockout'); // Initialize with blockout mode
+        this.loadCellShelf(); // Load saved cells into shelf
     }
     
     initializeTileData() {
@@ -38,20 +81,27 @@ class LevelEditor {
         for (let y = 0; y < this.totalHeight; y++) {
             this.tileData[y] = [];
             for (let x = 0; x < this.totalWidth; x++) {
-                this.tileData[y][x] = 0; // 0 = empty, 1 = filled
+                // All tiles start filled (1 = blockout)
+                this.tileData[y][x] = 1;
             }
         }
+        
+        // Initialize all cells as inactive (all filled by default - no modifications)
+        this.activeCells = new Set();
     }
     
     updateCanvasSize() {
-        this.totalWidth = this.gridCols * this.cellWidth;
-        this.totalHeight = this.gridRows * this.cellHeight;
+        this.totalWidth = this.totalGridCols * this.cellWidth;
+        this.totalHeight = this.totalGridRows * this.cellHeight;
+        this.viewportTileWidth = this.viewportCols * this.cellWidth;
+        this.viewportTileHeight = this.viewportRows * this.cellHeight;
         
-        this.canvas.width = this.totalWidth * this.tileSize;
-        this.canvas.height = this.totalHeight * this.tileSize;
+        // Canvas size is fixed - only content scales with zoom
+        this.canvas.width = this.canvasWidth;
+        this.canvas.height = this.canvasHeight;
         
         // Update UI info
-        document.getElementById('gridSize').textContent = `${this.gridCols}x${this.gridRows}`;
+        document.getElementById('gridSize').textContent = `${this.totalGridCols}x${this.totalGridRows}`;
         document.getElementById('cellSize').textContent = `${this.cellWidth}x${this.cellHeight}`;
         document.getElementById('totalSize').textContent = `${this.totalWidth}x${this.totalHeight}`;
         document.getElementById('tileSize').textContent = `${this.tileSize}x${this.tileSize}`;
@@ -64,7 +114,17 @@ class LevelEditor {
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-        this.canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
+        this.canvas.addEventListener('mouseleave', (e) => {
+            this.handleMouseUp(e);
+            this.showBrushPreview = false;
+            this.render();
+        });
+        
+        // Zoom events
+        this.canvas.addEventListener('wheel', (e) => this.handleWheel(e));
+        
+        // Keyboard events for panning
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
         
         // Prevent context menu on right click
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -76,55 +136,22 @@ class LevelEditor {
     }
     
     setupUI() {
-        // Grid dimension controls
-        const gridColsSlider = document.getElementById('gridCols');
-        const gridRowsSlider = document.getElementById('gridRows');
-        const cellWidthSlider = document.getElementById('cellWidth');
-        const cellHeightSlider = document.getElementById('cellHeight');
-        const tileSizeSlider = document.getElementById('tilePixelSize');
+        // Mode buttons
+        document.getElementById('blockoutMode').addEventListener('click', () => this.setMode('blockout'));
+        document.getElementById('selectCellMode').addEventListener('click', () => this.setMode('selectCell'));
+        document.getElementById('cellOpeningTile').addEventListener('click', () => this.setMode('cellOpening'));
+        document.getElementById('cloneMode').addEventListener('click', () => this.setMode('clone'));
         
-        gridColsSlider.addEventListener('input', (e) => {
-            this.gridCols = parseInt(e.target.value);
-            document.getElementById('gridColsValue').textContent = this.gridCols;
-            this.initializeTileData();
-            this.updateCanvasSize();
-        });
-        
-        gridRowsSlider.addEventListener('input', (e) => {
-            this.gridRows = parseInt(e.target.value);
-            document.getElementById('gridRowsValue').textContent = this.gridRows;
-            this.initializeTileData();
-            this.updateCanvasSize();
-        });
-        
-        cellWidthSlider.addEventListener('input', (e) => {
-            this.cellWidth = parseInt(e.target.value);
-            document.getElementById('cellWidthValue').textContent = this.cellWidth;
-            this.initializeTileData();
-            this.updateCanvasSize();
-        });
-        
-        cellHeightSlider.addEventListener('input', (e) => {
-            this.cellHeight = parseInt(e.target.value);
-            document.getElementById('cellHeightValue').textContent = this.cellHeight;
-            this.initializeTileData();
-            this.updateCanvasSize();
-        });
-        
-        tileSizeSlider.addEventListener('input', (e) => {
-            this.tileSize = parseInt(e.target.value);
-            document.getElementById('tileSizeValue').textContent = this.tileSize;
-            this.updateCanvasSize();
-        });
-        
-        // Tool buttons
-        document.getElementById('toggleTool').addEventListener('click', () => this.setTool('toggle'));
-        document.getElementById('drawTool').addEventListener('click', () => this.setTool('draw'));
-        document.getElementById('eraseTool').addEventListener('click', () => this.setTool('erase'));
+        // Cell actions
+        document.getElementById('clearCell').addEventListener('click', () => this.clearSelectedCell());
+        document.getElementById('fillCell').addEventListener('click', () => this.fillSelectedCell());
         
         // Grid action buttons
         document.getElementById('clearGrid').addEventListener('click', () => this.clearGrid());
-        document.getElementById('fillGrid').addEventListener('click', () => this.fillGrid());
+        
+        // Room Library
+        document.getElementById('saveRoom').addEventListener('click', () => this.saveRoom());
+        document.getElementById('loadRoom').addEventListener('click', () => this.loadRoom());
         
         // Border controls
         document.getElementById('showBorders').addEventListener('change', (e) => {
@@ -136,60 +163,117 @@ class LevelEditor {
             this.borderColor = e.target.value;
             this.render();
         });
+        
+        // Swap mode toggle
+        document.getElementById('swapMode').addEventListener('change', (e) => {
+            this.swapMode = e.target.checked;
+        });
+        
+        // Brush size control
+        document.getElementById('brushSize').addEventListener('input', (e) => {
+            this.brushSize = parseInt(e.target.value);
+            document.getElementById('brushSizeValue').textContent = this.brushSize;
+            document.getElementById('brushSizeValue2').textContent = this.brushSize;
+        });
+        
+        // Cell shelf drag and drop
+        this.setupCellShelfDragDrop();
     }
     
-    setTool(tool) {
-        this.currentTool = tool;
-        
-        // Update button states
-        document.querySelectorAll('.tool-button').forEach(btn => btn.classList.remove('active'));
-        document.getElementById(tool + 'Tool').classList.add('active');
-        
-        // Update cursor
-        switch(tool) {
-            case 'toggle':
-                this.canvas.style.cursor = 'crosshair';
-                break;
-            case 'draw':
-                this.canvas.style.cursor = 'cell';
-                break;
-            case 'erase':
-                this.canvas.style.cursor = 'not-allowed';
-                break;
-        }
-    }
     
     getTileFromMouse(e) {
         const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
         
-        const tileX = Math.floor(x / this.tileSize);
-        const tileY = Math.floor(y / this.tileSize);
+        // Convert canvas coordinates to world coordinates accounting for zoom and offset
+        const scaledTileSize = this.tileSize * this.zoom;
+        const worldPixelX = (canvasX / this.zoom) + (this.viewportX * this.cellWidth * this.tileSize) + this.viewportOffsetX;
+        const worldPixelY = (canvasY / this.zoom) + (this.viewportY * this.cellHeight * this.tileSize) + this.viewportOffsetY;
         
-        // Bounds check
-        if (tileX < 0 || tileX >= this.totalWidth || tileY < 0 || tileY >= this.totalHeight) {
+        const worldTileX = Math.floor(worldPixelX / this.tileSize);
+        const worldTileY = Math.floor(worldPixelY / this.tileSize);
+        
+        // Bounds check against total world
+        if (worldTileX < 0 || worldTileX >= this.totalWidth || worldTileY < 0 || worldTileY >= this.totalHeight) {
             return null;
         }
         
-        return { x: tileX, y: tileY };
+        return { x: worldTileX, y: worldTileY };
     }
     
     handleMouseDown(e) {
         e.preventDefault();
+        
+        // Middle mouse button for panning
+        if (e.button === 1) {
+            this.isPanning = true;
+            this.lastPanX = e.clientX;
+            this.lastPanY = e.clientY;
+            this.canvas.style.cursor = 'grab';
+            return;
+        }
+        
+        if (this.currentMode === 'selectCell' || this.currentMode === 'clone') {
+            this.handleCellMouseDown(e);
+            return;
+        }
+        
         this.isDrawing = true;
         this.lastDrawnTile = null;
+        this.drawingMode = e.button === 0 ? 'draw' : 'erase'; // 0 = left click, 2 = right click
         this.handleTileInteraction(e);
     }
     
     handleMouseMove(e) {
-        if (!this.isDrawing) return;
+        if (this.isPanning) {
+            const deltaX = e.clientX - this.lastPanX;
+            const deltaY = e.clientY - this.lastPanY;
+            
+            // Pan by moving the viewport offset in pixels
+            this.viewportOffsetX -= deltaX / this.zoom;
+            this.viewportOffsetY -= deltaY / this.zoom;
+            
+            this.constrainViewport();
+            this.render();
+            
+            this.lastPanX = e.clientX;
+            this.lastPanY = e.clientY;
+            return;
+        }
+        
+        if (this.isDraggingCell && this.currentMode === 'selectCell') {
+            this.handleCellDrag(e);
+            return;
+        }
+        
+        if (!this.isDrawing) {
+            // Update brush preview
+            this.updateBrushPreview(e);
+            return;
+        }
         this.handleTileInteraction(e);
     }
     
     handleMouseUp(e) {
+        if (this.isPanning) {
+            this.isPanning = false;
+            this.canvas.style.cursor = 'crosshair';
+            return;
+        }
+        
+        if (this.isDraggingCell && this.currentMode === 'selectCell') {
+            this.handleCellDrop(e);
+            return;
+        }
+        
         this.isDrawing = false;
         this.lastDrawnTile = null;
+        
+        // Update brush preview when not drawing
+        if (e) {
+            this.updateBrushPreview(e);
+        }
     }
     
     handleTileInteraction(e) {
@@ -203,25 +287,120 @@ class LevelEditor {
             return;
         }
         
-        this.lastDrawnTile = tile;
-        
-        switch (this.currentTool) {
-            case 'toggle':
-                this.tileData[tile.y][tile.x] = this.tileData[tile.y][tile.x] === 0 ? 1 : 0;
-                break;
-            case 'draw':
-                this.tileData[tile.y][tile.x] = 1;
-                break;
-            case 'erase':
-                this.tileData[tile.y][tile.x] = 0;
-                break;
+        // Check if connection tiles can be placed here
+        if (this.currentTileType === 2 && this.drawingMode === 'draw') {
+            if (!this.isOnCellEdge(tile.x, tile.y)) {
+                return; // Don't allow placement if not on cell edge
+            }
         }
         
-        this.renderTile(tile.x, tile.y);
+        this.lastDrawnTile = tile;
         
-        // Redraw cell borders if needed
-        if (this.showBorders) {
-            this.drawCellBorders();
+        // Apply brush to area around clicked tile
+        const affectedCells = new Set();
+        
+        // Get list of tiles to affect based on brush pattern
+        const tilesToAffect = this.getBrushTiles(tile.x, tile.y);
+        
+        for (const {x: targetX, y: targetY} of tilesToAffect) {
+            // Check bounds
+            if (targetX >= 0 && targetX < this.totalWidth && targetY >= 0 && targetY < this.totalHeight) {
+                    // Check if connection tiles can be placed here
+                    if (this.currentTileType === 2 && this.drawingMode === 'draw') {
+                        if (!this.isOnCellEdge(targetX, targetY)) {
+                            continue; // Don't allow placement if not on cell edge
+                        }
+                    }
+                    
+                    // Use mouse button to determine draw/erase
+                    if (this.drawingMode === 'draw') {
+                        // Drawing now creates empty space (0) by default, unless placing connection tiles
+                        if (this.currentTileType === 2) {
+                            this.tileData[targetY][targetX] = 2; // Place connection tile
+                        } else {
+                            this.tileData[targetY][targetX] = 0; // Create empty space
+                        }
+                    } else if (this.drawingMode === 'erase') {
+                        this.tileData[targetY][targetX] = 1; // Fill back in with blockout
+                    }
+                    
+                    // Track affected cells for activity updates
+                    const cellX = Math.floor(targetX / this.cellWidth);
+                    const cellY = Math.floor(targetY / this.cellHeight);
+                    affectedCells.add(`${cellX},${cellY}`);
+            }
+        }
+        
+        // Update activity for all affected cells
+        for (const cellKey of affectedCells) {
+            const [cellX, cellY] = cellKey.split(',').map(Number);
+            this.updateCellActivity(cellX, cellY);
+        }
+        
+        // Re-render the entire view to show the change
+        this.render();
+    }
+    
+    getBrushTiles(centerX, centerY) {
+        const tiles = [];
+        
+        if (this.brushSize === 1) {
+            // Size 1: Just center tile
+            tiles.push({x: centerX, y: centerY});
+        } else if (this.brushSize === 2) {
+            // Size 2: Plus pattern (center + 4 directions)
+            tiles.push({x: centerX, y: centerY});         // center
+            tiles.push({x: centerX - 1, y: centerY});     // left
+            tiles.push({x: centerX + 1, y: centerY});     // right
+            tiles.push({x: centerX, y: centerY - 1});     // up
+            tiles.push({x: centerX, y: centerY + 1});     // down
+        } else if (this.brushSize === 3) {
+            // Size 3: Full 3x3 square
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    tiles.push({x: centerX + dx, y: centerY + dy});
+                }
+            }
+        } else if (this.brushSize === 4) {
+            // Size 4: 3x3 center + extensions (13 tiles total)
+            // First add 3x3 center
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    tiles.push({x: centerX + dx, y: centerY + dy});
+                }
+            }
+            // Add extensions in 4 directions
+            tiles.push({x: centerX - 2, y: centerY});     // far left
+            tiles.push({x: centerX + 2, y: centerY});     // far right
+            tiles.push({x: centerX, y: centerY - 2});     // far up
+            tiles.push({x: centerX, y: centerY + 2});     // far down
+        } else if (this.brushSize === 5) {
+            // Size 5: Full 5x5 square
+            for (let dy = -2; dy <= 2; dy++) {
+                for (let dx = -2; dx <= 2; dx++) {
+                    tiles.push({x: centerX + dx, y: centerY + dy});
+                }
+            }
+        }
+        
+        return tiles;
+    }
+    
+    updateBrushPreview(e) {
+        const tile = this.getTileFromMouse(e);
+        if (!tile) {
+            this.showBrushPreview = false;
+            this.render();
+            return;
+        }
+        
+        // Only show brush preview in drawing modes
+        if (this.currentMode === 'blockout' || this.currentMode === 'cellOpening') {
+            this.showBrushPreview = true;
+            this.brushPreviewTile = tile;
+            this.render();
+        } else {
+            this.showBrushPreview = false;
         }
     }
     
@@ -231,7 +410,8 @@ class LevelEditor {
         const touch = e.touches[0];
         const mouseEvent = new MouseEvent('mousedown', {
             clientX: touch.clientX,
-            clientY: touch.clientY
+            clientY: touch.clientY,
+            button: 0 // Touch always draws (left click equivalent)
         });
         this.handleMouseDown(mouseEvent);
     }
@@ -255,85 +435,191 @@ class LevelEditor {
         // Clear canvas
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
-        // Render all tiles
-        for (let y = 0; y < this.totalHeight; y++) {
-            for (let x = 0; x < this.totalWidth; x++) {
-                this.renderTile(x, y);
+        // Save context for transformations
+        this.ctx.save();
+        
+        // Apply zoom and pan transformations
+        this.ctx.scale(this.zoom, this.zoom);
+        this.ctx.translate(-this.viewportOffsetX - (this.viewportX * this.cellWidth * this.tileSize), 
+                          -this.viewportOffsetY - (this.viewportY * this.cellHeight * this.tileSize));
+        
+        // Calculate which tiles are visible on screen
+        const scaledTileSize = this.tileSize;
+        const viewStartX = Math.floor((this.viewportOffsetX + (this.viewportX * this.cellWidth * this.tileSize)) / scaledTileSize);
+        const viewStartY = Math.floor((this.viewportOffsetY + (this.viewportY * this.cellHeight * this.tileSize)) / scaledTileSize);
+        const viewEndX = Math.min(this.totalWidth, viewStartX + Math.ceil(this.canvas.width / (scaledTileSize * this.zoom)) + 2);
+        const viewEndY = Math.min(this.totalHeight, viewStartY + Math.ceil(this.canvas.height / (scaledTileSize * this.zoom)) + 2);
+        
+        // First render cell backgrounds
+        this.renderCellBackgrounds(viewStartX, viewStartY, viewEndX, viewEndY);
+        
+        // Then render visible tiles on top
+        for (let worldY = Math.max(0, viewStartY); worldY < viewEndY; worldY++) {
+            for (let worldX = Math.max(0, viewStartX); worldX < viewEndX; worldX++) {
+                this.renderTileAtWorld(worldX, worldY);
             }
         }
         
-        // Draw tile grid lines
+        // Draw grid lines
         this.drawGrid();
         
         // Draw cell borders if enabled
         if (this.showBorders) {
             this.drawCellBorders();
         }
+        
+        // Draw selected cell highlight
+        if (this.selectedCell && this.currentMode === 'selectCell') {
+            this.drawSelectedCellHighlight();
+        }
+        
+        // Draw brush preview
+        if (this.showBrushPreview && this.brushPreviewTile) {
+            this.drawBrushPreview();
+        }
+        
+        // Draw canvas drop zone
+        if (this.showCanvasDropZone) {
+            this.drawCanvasDropZone();
+        }
+        
+        // Restore context
+        this.ctx.restore();
+    }
+    
+    renderCellBackgrounds(startTileX, startTileY, endTileX, endTileY) {
+        // Calculate which cells are visible
+        const startCellX = Math.max(0, Math.floor(startTileX / this.cellWidth));
+        const startCellY = Math.max(0, Math.floor(startTileY / this.cellHeight));
+        const endCellX = Math.min(this.totalGridCols, Math.ceil(endTileX / this.cellWidth));
+        const endCellY = Math.min(this.totalGridRows, Math.ceil(endTileY / this.cellHeight));
+        
+        // Render cell backgrounds
+        for (let cellY = startCellY; cellY < endCellY; cellY++) {
+            for (let cellX = startCellX; cellX < endCellX; cellX++) {
+                const isActive = this.isCellActive(cellX, cellY);
+                
+                // Calculate cell position in pixels
+                const pixelX = cellX * this.cellWidth * this.tileSize;
+                const pixelY = cellY * this.cellHeight * this.tileSize;
+                const cellPixelWidth = this.cellWidth * this.tileSize;
+                const cellPixelHeight = this.cellHeight * this.tileSize;
+                
+                // Fill cell background
+                this.ctx.fillStyle = isActive ? '#ffffff' : '#e8e8e8';
+                this.ctx.fillRect(pixelX, pixelY, cellPixelWidth, cellPixelHeight);
+            }
+        }
+    }
+    
+    renderTileAtWorld(worldX, worldY) {
+        // Bounds check - ensure we don't access undefined array elements
+        if (worldY < 0 || worldY >= this.totalHeight || worldX < 0 || worldX >= this.totalWidth) {
+            return;
+        }
+        
+        const pixelX = worldX * this.tileSize;
+        const pixelY = worldY * this.tileSize;
+        const tileValue = this.tileData[worldY][worldX];
+        
+        // Check if this tile's cell is active
+        const cellX = Math.floor(worldX / this.cellWidth);
+        const cellY = Math.floor(worldY / this.cellHeight);
+        const cellActive = this.isCellActive(cellX, cellY);
+        
+        // Only render non-empty tiles, and only if cell is active or tile is not default filled
+        if (tileValue !== 0) {
+            const isDefaultFilled = (tileValue === 1);
+            
+            // Don't render default filled tiles on inactive cells
+            if (isDefaultFilled && !cellActive) {
+                return; // Skip rendering this default filled tile
+            }
+            
+            switch (tileValue) {
+                case 1: // Blockout
+                    this.ctx.fillStyle = '#000000';
+                    break;
+                case 2: // Connection tile
+                    this.ctx.fillStyle = '#ffff00';
+                    break;
+                default:
+                    this.ctx.fillStyle = '#000000'; // Default to blockout color
+            }
+            
+            this.ctx.fillRect(pixelX, pixelY, this.tileSize, this.tileSize);
+        }
     }
     
     renderTile(x, y) {
-        const pixelX = x * this.tileSize;
-        const pixelY = y * this.tileSize;
-        
-        // Fill tile
-        this.ctx.fillStyle = this.tileData[y][x] === 1 ? '#000000' : '#ffffff';
-        this.ctx.fillRect(pixelX, pixelY, this.tileSize, this.tileSize);
-        
-        // Redraw grid lines for this tile
-        this.ctx.strokeStyle = '#cccccc';
-        this.ctx.lineWidth = 1;
-        this.ctx.strokeRect(pixelX, pixelY, this.tileSize, this.tileSize);
+        // Legacy method - redirect to world renderer for single tile updates
+        this.renderTileAtWorld(x, y);
     }
     
     drawGrid() {
-        this.ctx.strokeStyle = '#cccccc';
-        this.ctx.lineWidth = 1;
+        this.ctx.strokeStyle = '#999999';
+        this.ctx.lineWidth = 1 / this.zoom; // Adjust line width for zoom
+        
+        // Calculate visible area in world coordinates
+        const viewStartX = Math.floor((this.viewportOffsetX + (this.viewportX * this.cellWidth * this.tileSize)) / this.tileSize);
+        const viewStartY = Math.floor((this.viewportOffsetY + (this.viewportY * this.cellHeight * this.tileSize)) / this.tileSize);
+        const viewEndX = Math.min(this.totalWidth, viewStartX + Math.ceil(this.canvas.width / (this.tileSize * this.zoom)) + 2);
+        const viewEndY = Math.min(this.totalHeight, viewStartY + Math.ceil(this.canvas.height / (this.tileSize * this.zoom)) + 2);
         
         // Vertical lines
-        for (let x = 0; x <= this.totalWidth; x++) {
+        for (let x = Math.max(0, viewStartX); x <= viewEndX; x++) {
             const pixelX = x * this.tileSize;
             this.ctx.beginPath();
-            this.ctx.moveTo(pixelX, 0);
-            this.ctx.lineTo(pixelX, this.canvas.height);
+            this.ctx.moveTo(pixelX, Math.max(0, viewStartY) * this.tileSize);
+            this.ctx.lineTo(pixelX, viewEndY * this.tileSize);
             this.ctx.stroke();
         }
         
         // Horizontal lines
-        for (let y = 0; y <= this.totalHeight; y++) {
+        for (let y = Math.max(0, viewStartY); y <= viewEndY; y++) {
             const pixelY = y * this.tileSize;
             this.ctx.beginPath();
-            this.ctx.moveTo(0, pixelY);
-            this.ctx.lineTo(this.canvas.width, pixelY);
+            this.ctx.moveTo(Math.max(0, viewStartX) * this.tileSize, pixelY);
+            this.ctx.lineTo(viewEndX * this.tileSize, pixelY);
             this.ctx.stroke();
         }
     }
     
     drawCellBorders() {
         this.ctx.strokeStyle = this.borderColor;
-        this.ctx.lineWidth = 3;
+        this.ctx.lineWidth = 3 / this.zoom; // Adjust line width for zoom
         
-        // Draw cell boundaries
-        for (let cellY = 0; cellY <= this.gridRows; cellY++) {
-            for (let cellX = 0; cellX <= this.gridCols; cellX++) {
-                const pixelX = cellX * this.cellWidth * this.tileSize;
-                const pixelY = cellY * this.cellHeight * this.tileSize;
-                
-                // Vertical lines
-                if (cellX <= this.gridCols) {
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(pixelX, 0);
-                    this.ctx.lineTo(pixelX, this.canvas.height);
-                    this.ctx.stroke();
-                }
-                
-                // Horizontal lines
-                if (cellY <= this.gridRows) {
-                    this.ctx.beginPath();
-                    this.ctx.moveTo(0, pixelY);
-                    this.ctx.lineTo(this.canvas.width, pixelY);
-                    this.ctx.stroke();
-                }
-            }
+        const cellWidth = this.cellWidth * this.tileSize;
+        const cellHeight = this.cellHeight * this.tileSize;
+        
+        // Calculate the world area that's visible
+        const worldStartX = (this.viewportOffsetX + (this.viewportX * this.cellWidth * this.tileSize));
+        const worldStartY = (this.viewportOffsetY + (this.viewportY * this.cellHeight * this.tileSize));
+        const worldEndX = worldStartX + (this.canvas.width / this.zoom);
+        const worldEndY = worldStartY + (this.canvas.height / this.zoom);
+        
+        // Calculate which cells are visible
+        const startCellX = Math.max(0, Math.floor(worldStartX / cellWidth));
+        const startCellY = Math.max(0, Math.floor(worldStartY / cellHeight));
+        const endCellX = Math.min(this.totalGridCols, Math.ceil(worldEndX / cellWidth));
+        const endCellY = Math.min(this.totalGridRows, Math.ceil(worldEndY / cellHeight));
+        
+        // Draw vertical cell borders
+        for (let cellX = startCellX; cellX <= endCellX; cellX++) {
+            const pixelX = cellX * cellWidth;
+            this.ctx.beginPath();
+            this.ctx.moveTo(pixelX, startCellY * cellHeight);
+            this.ctx.lineTo(pixelX, endCellY * cellHeight);
+            this.ctx.stroke();
+        }
+        
+        // Draw horizontal cell borders
+        for (let cellY = startCellY; cellY <= endCellY; cellY++) {
+            const pixelY = cellY * cellHeight;
+            this.ctx.beginPath();
+            this.ctx.moveTo(startCellX * cellWidth, pixelY);
+            this.ctx.lineTo(endCellX * cellWidth, pixelY);
+            this.ctx.stroke();
         }
     }
     
@@ -346,13 +632,1015 @@ class LevelEditor {
         this.render();
     }
     
-    fillGrid() {
-        for (let y = 0; y < this.totalHeight; y++) {
-            for (let x = 0; x < this.totalWidth; x++) {
-                this.tileData[y][x] = 1;
+    // Mode management
+    setMode(mode) {
+        this.currentMode = mode;
+        this.isCloneMode = (mode === 'clone');
+        
+        // Update UI buttons
+        document.querySelectorAll('.tool-button').forEach(btn => btn.classList.remove('active'));
+        
+        switch (mode) {
+            case 'blockout':
+                document.getElementById('blockoutMode').classList.add('active');
+                this.currentTileType = 1;
+                this.canvas.style.cursor = 'crosshair';
+                document.getElementById('cellMenu').style.display = 'none';
+                break;
+            case 'selectCell':
+                document.getElementById('selectCellMode').classList.add('active');
+                this.canvas.style.cursor = 'pointer';
+                break;
+            case 'clone':
+                document.getElementById('cloneMode').classList.add('active');
+                this.canvas.style.cursor = 'copy';
+                break;
+            case 'cellOpening':
+                document.getElementById('cellOpeningTile').classList.add('active');
+                this.currentTileType = 2;
+                this.canvas.style.cursor = 'crosshair';
+                document.getElementById('cellMenu').style.display = 'none';
+                break;
+        }
+        
+        this.render();
+    }
+    
+    handleCellMouseDown(e) {
+        const tile = this.getTileFromMouse(e);
+        if (!tile) return;
+        
+        // Convert tile coordinates to cell coordinates
+        const cellX = Math.floor(tile.x / this.cellWidth);
+        const cellY = Math.floor(tile.y / this.cellHeight);
+        
+        // If in clone mode and we have a selected cell, clone to clicked location
+        if (this.isCloneMode && this.selectedCell && (this.selectedCell.x !== cellX || this.selectedCell.y !== cellY)) {
+            this.duplicateCell(this.selectedCell.x, this.selectedCell.y, cellX, cellY);
+            this.render();
+            return;
+        }
+        
+        // If clicking on already selected cell, start dragging
+        if (this.selectedCell && this.selectedCell.x === cellX && this.selectedCell.y === cellY) {
+            this.isDraggingCell = true;
+            this.dragStartCell = { x: cellX, y: cellY };
+            this.canvas.style.cursor = 'grabbing';
+            // Show canvas drop zone
+            this.showCanvasDropZone = true;
+            this.render();
+            return;
+        }
+        
+        // Otherwise, select the cell
+        this.selectedCell = { x: cellX, y: cellY };
+        
+        // Update UI
+        document.getElementById('selectedCellX').textContent = cellX;
+        document.getElementById('selectedCellY').textContent = cellY;
+        document.getElementById('cellMenu').style.display = 'block';
+        
+        this.render();
+    }
+    
+    handleCellDrag(e) {
+        // Visual feedback during drag - could show preview here
+        this.canvas.style.cursor = 'grabbing';
+        // No need for hover detection - it's drawn on canvas
+    }
+    
+    handleCellDrop(e) {
+        // Check if we're dropping in the canvas drop zone area
+        if (this.showCanvasDropZone && this.isDropOnCanvasDropZone(e)) {
+            // Dropping on canvas drop zone - save the cell
+            this.saveCellToShelf();
+            this.isDraggingCell = false;
+            this.dragStartCell = null;
+            this.canvas.style.cursor = 'pointer';
+            // Hide canvas drop zone
+            this.showCanvasDropZone = false;
+            this.render();
+            return;
+        }
+        
+        const tile = this.getTileFromMouse(e);
+        if (!tile) {
+            this.isDraggingCell = false;
+            this.dragStartCell = null;
+            this.canvas.style.cursor = 'pointer';
+            // Hide canvas drop zone
+            this.showCanvasDropZone = false;
+            this.render();
+            return;
+        }
+        
+        // Convert tile coordinates to cell coordinates
+        const targetCellX = Math.floor(tile.x / this.cellWidth);
+        const targetCellY = Math.floor(tile.y / this.cellHeight);
+        
+        // Check if we're dropping on a different cell
+        if (this.dragStartCell && (targetCellX !== this.dragStartCell.x || targetCellY !== this.dragStartCell.y)) {
+            const isShiftHeld = e.shiftKey;
+            
+            if (isShiftHeld) {
+                // Shift overrides swap mode - always duplicate
+                this.duplicateCell(this.dragStartCell.x, this.dragStartCell.y, targetCellX, targetCellY);
+            } else if (this.swapMode) {
+                this.swapCells(this.dragStartCell.x, this.dragStartCell.y, targetCellX, targetCellY);
+            } else {
+                this.moveCell(this.dragStartCell.x, this.dragStartCell.y, targetCellX, targetCellY);
+            }
+            
+            // Update selected cell to new position (unless it was a duplication)
+            if (!isShiftHeld) {
+                this.selectedCell = { x: targetCellX, y: targetCellY };
+                document.getElementById('selectedCellX').textContent = targetCellX;
+                document.getElementById('selectedCellY').textContent = targetCellY;
             }
         }
+        
+        this.isDraggingCell = false;
+        this.dragStartCell = null;
+        this.canvas.style.cursor = 'pointer';
+        
+        // Hide canvas drop zone
+        this.showCanvasDropZone = false;
+        
         this.render();
+    }
+    
+    clearSelectedCell() {
+        if (!this.selectedCell) return;
+        
+        const startX = this.selectedCell.x * this.cellWidth;
+        const startY = this.selectedCell.y * this.cellHeight;
+        const endX = startX + this.cellWidth;
+        const endY = startY + this.cellHeight;
+        
+        // Reset cell to default state: completely filled
+        for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
+                if (y < this.totalHeight && x < this.totalWidth) {
+                    this.tileData[y][x] = 1; // Fill entire cell
+                }
+            }
+        }
+        
+        // Update cell activity
+        this.updateCellActivity(this.selectedCell.x, this.selectedCell.y);
+        this.render();
+    }
+    
+    fillSelectedCell() {
+        if (!this.selectedCell) return;
+        
+        const startX = this.selectedCell.x * this.cellWidth;
+        const startY = this.selectedCell.y * this.cellHeight;
+        const endX = startX + this.cellWidth;
+        const endY = startY + this.cellHeight;
+        
+        // Fill entire cell (same as clear now since default is filled)
+        for (let y = startY; y < endY; y++) {
+            for (let x = startX; x < endX; x++) {
+                if (y < this.totalHeight && x < this.totalWidth) {
+                    this.tileData[y][x] = 1;
+                }
+            }
+        }
+        
+        // Update cell activity (will become inactive since it's now default state)
+        this.updateCellActivity(this.selectedCell.x, this.selectedCell.y);
+        this.render();
+    }
+    
+    moveCell(fromCellX, fromCellY, toCellX, toCellY) {
+        // Get source cell data
+        const cellData = this.getCellData(fromCellX, fromCellY);
+        
+        // Clear source cell
+        this.setCellData(fromCellX, fromCellY, this.createEmptyCell());
+        
+        // Set target cell
+        this.setCellData(toCellX, toCellY, cellData);
+    }
+    
+    duplicateCell(fromCellX, fromCellY, toCellX, toCellY) {
+        // Get source cell data
+        const cellData = this.getCellData(fromCellX, fromCellY);
+        
+        // Copy to target cell (don't clear source)
+        this.setCellData(toCellX, toCellY, cellData);
+    }
+    
+    swapCells(cellAX, cellAY, cellBX, cellBY) {
+        // Get both cell data
+        const cellAData = this.getCellData(cellAX, cellAY);
+        const cellBData = this.getCellData(cellBX, cellBY);
+        
+        // Swap them
+        this.setCellData(cellAX, cellAY, cellBData);
+        this.setCellData(cellBX, cellBY, cellAData);
+    }
+    
+    getCellData(cellX, cellY) {
+        const startX = cellX * this.cellWidth;
+        const startY = cellY * this.cellHeight;
+        const cellData = [];
+        
+        for (let y = 0; y < this.cellHeight; y++) {
+            cellData[y] = [];
+            for (let x = 0; x < this.cellWidth; x++) {
+                const worldX = startX + x;
+                const worldY = startY + y;
+                
+                if (worldX < this.totalWidth && worldY < this.totalHeight) {
+                    cellData[y][x] = this.tileData[worldY][worldX];
+                } else {
+                    cellData[y][x] = 0;
+                }
+            }
+        }
+        
+        return cellData;
+    }
+    
+    setCellData(cellX, cellY, cellData) {
+        const startX = cellX * this.cellWidth;
+        const startY = cellY * this.cellHeight;
+        
+        for (let y = 0; y < this.cellHeight && y < cellData.length; y++) {
+            for (let x = 0; x < this.cellWidth && x < cellData[y].length; x++) {
+                const worldX = startX + x;
+                const worldY = startY + y;
+                
+                if (worldX < this.totalWidth && worldY < this.totalHeight) {
+                    this.tileData[worldY][worldX] = cellData[y][x];
+                }
+            }
+        }
+        
+        // Update cell activity after setting data
+        this.updateCellActivity(cellX, cellY);
+    }
+    
+    createEmptyCell() {
+        const cellData = [];
+        for (let y = 0; y < this.cellHeight; y++) {
+            cellData[y] = [];
+            for (let x = 0; x < this.cellWidth; x++) {
+                // Create default cell: completely filled
+                cellData[y][x] = 1;
+            }
+        }
+        return cellData;
+    }
+    
+    isOnCellEdge(tileX, tileY) {
+        // Calculate which cell this tile belongs to
+        const cellX = Math.floor(tileX / this.cellWidth);
+        const cellY = Math.floor(tileY / this.cellHeight);
+        
+        // Calculate tile position within the cell
+        const tileInCellX = tileX % this.cellWidth;
+        const tileInCellY = tileY % this.cellHeight;
+        
+        // Check if tile is on any edge of the cell
+        const onLeftEdge = tileInCellX === 0;
+        const onRightEdge = tileInCellX === this.cellWidth - 1;
+        const onTopEdge = tileInCellY === 0;
+        const onBottomEdge = tileInCellY === this.cellHeight - 1;
+        
+        return onLeftEdge || onRightEdge || onTopEdge || onBottomEdge;
+    }
+    
+    isTileOnCellBorder(tileX, tileY) {
+        // Calculate which cell this tile belongs to
+        const cellX = Math.floor(tileX / this.cellWidth);
+        const cellY = Math.floor(tileY / this.cellHeight);
+        
+        // Calculate tile position within the cell
+        const tileInCellX = tileX % this.cellWidth;
+        const tileInCellY = tileY % this.cellHeight;
+        
+        // Check if tile is on any border of the cell
+        const onLeftBorder = tileInCellX === 0;
+        const onRightBorder = tileInCellX === this.cellWidth - 1;
+        const onTopBorder = tileInCellY === 0;
+        const onBottomBorder = tileInCellY === this.cellHeight - 1;
+        
+        return onLeftBorder || onRightBorder || onTopBorder || onBottomBorder;
+    }
+    
+    updateCellActivity(cellX, cellY) {
+        // Check if cell has been modified from its default "all filled" state
+        const startX = cellX * this.cellWidth;
+        const startY = cellY * this.cellHeight;
+        let hasEmptyTiles = false;
+        let hasConnectionTiles = false;
+        
+        for (let y = startY; y < startY + this.cellHeight && y < this.totalHeight; y++) {
+            for (let x = startX; x < startX + this.cellWidth && x < this.totalWidth; x++) {
+                const tileValue = this.tileData[y][x];
+                
+                if (tileValue === 0) {
+                    hasEmptyTiles = true; // Found empty space (carved out)
+                } else if (tileValue === 2) {
+                    hasConnectionTiles = true; // Found connection tiles
+                }
+            }
+        }
+        
+        const cellKey = `${cellX},${cellY}`;
+        // Cell is active if it has been modified from the default "all filled" state
+        // This means it has empty tiles (carved space) OR connection tiles
+        if (hasEmptyTiles || hasConnectionTiles) {
+            this.activeCells.add(cellKey);
+        } else {
+            this.activeCells.delete(cellKey);
+        }
+    }
+    
+    isCellActive(cellX, cellY) {
+        return this.activeCells.has(`${cellX},${cellY}`);
+    }
+    
+    saveRoom() {
+        // Generate auto name with timestamp
+        const now = new Date();
+        const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        const roomName = `room-${timestamp}`;
+        
+        // Collect room data
+        const roomData = {
+            name: roomName,
+            timestamp: now.toISOString(),
+            gridSize: { cols: this.totalGridCols, rows: this.totalGridRows },
+            cellSize: { width: this.cellWidth, height: this.cellHeight },
+            tileData: this.tileData,
+            activeCells: Array.from(this.activeCells),
+            version: '1.0'
+        };
+        
+        // Save to localStorage (for now - could be file system later)
+        const savedRooms = this.getSavedRooms();
+        savedRooms[roomName] = roomData;
+        localStorage.setItem('roomLibrary', JSON.stringify(savedRooms));
+        
+        alert(`Room saved as: ${roomName}`);
+    }
+    
+    loadRoom() {
+        const savedRooms = this.getSavedRooms();
+        const roomNames = Object.keys(savedRooms);
+        
+        if (roomNames.length === 0) {
+            alert('No saved rooms found!');
+            return;
+        }
+        
+        // For now, show simple prompt (could be fancy UI later)
+        const roomList = roomNames.map((name, index) => `${index + 1}. ${name}`).join('\\n');
+        const selection = prompt(`Select room to load:\\n\\n${roomList}\\n\\nEnter number (1-${roomNames.length}):`);
+        
+        const roomIndex = parseInt(selection) - 1;
+        if (isNaN(roomIndex) || roomIndex < 0 || roomIndex >= roomNames.length) {
+            alert('Invalid selection!');
+            return;
+        }
+        
+        const selectedRoomName = roomNames[roomIndex];
+        const roomData = savedRooms[selectedRoomName];
+        
+        // Load room data
+        this.tileData = roomData.tileData;
+        this.activeCells = new Set(roomData.activeCells || []);
+        
+        // Update grid size if different
+        if (roomData.gridSize) {
+            this.totalGridCols = roomData.gridSize.cols;
+            this.totalGridRows = roomData.gridSize.rows;
+        }
+        if (roomData.cellSize) {
+            this.cellWidth = roomData.cellSize.width;
+            this.cellHeight = roomData.cellSize.height;
+        }
+        
+        this.updateCanvasSize();
+        this.render();
+        
+        alert(`Room loaded: ${selectedRoomName}`);
+    }
+    
+    getSavedRooms() {
+        try {
+            const saved = localStorage.getItem('roomLibrary');
+            return saved ? JSON.parse(saved) : {};
+        } catch (error) {
+            console.error('Error loading saved rooms:', error);
+            return {};
+        }
+    }
+    
+    saveCell() {
+        if (!this.selectedCell) {
+            alert('Please select a cell first!');
+            return;
+        }
+        
+        // Generate auto name with timestamp
+        const now = new Date();
+        const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        const cellName = `cell-${timestamp}`;
+        
+        // Get cell data
+        const cellData = this.getCellData(this.selectedCell.x, this.selectedCell.y);
+        
+        // Create cell library entry
+        const cellEntry = {
+            name: cellName,
+            timestamp: now.toISOString(),
+            cellSize: { width: this.cellWidth, height: this.cellHeight },
+            data: cellData,
+            isActive: this.isCellActive(this.selectedCell.x, this.selectedCell.y),
+            version: '1.0'
+        };
+        
+        // Save to localStorage
+        const savedCells = this.getSavedCells();
+        savedCells[cellName] = cellEntry;
+        localStorage.setItem('cellLibrary', JSON.stringify(savedCells));
+        
+        alert(`Cell saved as: ${cellName}`);
+    }
+    
+    loadCell() {
+        if (!this.selectedCell) {
+            alert('Please select a target cell first!');
+            return;
+        }
+        
+        const savedCells = this.getSavedCells();
+        const cellNames = Object.keys(savedCells);
+        
+        if (cellNames.length === 0) {
+            alert('No saved cells found!');
+            return;
+        }
+        
+        // Show selection prompt
+        const cellList = cellNames.map((name, index) => `${index + 1}. ${name}`).join('\\n');
+        const selection = prompt(`Select cell to load:\\n\\n${cellList}\\n\\nEnter number (1-${cellNames.length}):`);
+        
+        const cellIndex = parseInt(selection) - 1;
+        if (isNaN(cellIndex) || cellIndex < 0 || cellIndex >= cellNames.length) {
+            alert('Invalid selection!');
+            return;
+        }
+        
+        const selectedCellName = cellNames[cellIndex];
+        const cellEntry = savedCells[selectedCellName];
+        
+        // Load cell data into selected cell
+        this.setCellData(this.selectedCell.x, this.selectedCell.y, cellEntry.data);
+        this.render();
+        
+        alert(`Cell loaded: ${selectedCellName}`);
+    }
+    
+    getSavedCells() {
+        try {
+            const saved = localStorage.getItem('cellLibrary');
+            return saved ? JSON.parse(saved) : {};
+        } catch (error) {
+            console.error('Error loading saved cells:', error);
+            return {};
+        }
+    }
+    
+    drawSelectedCellHighlight() {
+        if (!this.selectedCell) return;
+        
+        this.ctx.strokeStyle = '#FF9800';
+        this.ctx.lineWidth = 4 / this.zoom;
+        
+        const cellX = this.selectedCell.x * this.cellWidth * this.tileSize;
+        const cellY = this.selectedCell.y * this.cellHeight * this.tileSize;
+        const cellWidth = this.cellWidth * this.tileSize;
+        const cellHeight = this.cellHeight * this.tileSize;
+        
+        // Draw highlight rectangle
+        this.ctx.beginPath();
+        this.ctx.strokeRect(cellX, cellY, cellWidth, cellHeight);
+        
+        // Draw corner markers
+        const markerSize = 10 / this.zoom;
+        this.ctx.lineWidth = 2 / this.zoom;
+        
+        // Top-left corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(cellX, cellY + markerSize);
+        this.ctx.lineTo(cellX, cellY);
+        this.ctx.lineTo(cellX + markerSize, cellY);
+        this.ctx.stroke();
+        
+        // Top-right corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(cellX + cellWidth - markerSize, cellY);
+        this.ctx.lineTo(cellX + cellWidth, cellY);
+        this.ctx.lineTo(cellX + cellWidth, cellY + markerSize);
+        this.ctx.stroke();
+        
+        // Bottom-left corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(cellX, cellY + cellHeight - markerSize);
+        this.ctx.lineTo(cellX, cellY + cellHeight);
+        this.ctx.lineTo(cellX + markerSize, cellY + cellHeight);
+        this.ctx.stroke();
+        
+        // Bottom-right corner
+        this.ctx.beginPath();
+        this.ctx.moveTo(cellX + cellWidth - markerSize, cellY + cellHeight);
+        this.ctx.lineTo(cellX + cellWidth, cellY + cellHeight);
+        this.ctx.lineTo(cellX + cellWidth, cellY + cellHeight - markerSize);
+        this.ctx.stroke();
+    }
+    
+    drawBrushPreview() {
+        if (!this.brushPreviewTile) return;
+        
+        // Get tiles that will be affected by brush
+        const tilesToAffect = this.getBrushTiles(this.brushPreviewTile.x, this.brushPreviewTile.y);
+        
+        // Draw semi-transparent overlay for brush area
+        this.ctx.strokeStyle = '#ff6600';
+        this.ctx.lineWidth = 2 / this.zoom;
+        this.ctx.globalAlpha = 0.6;
+        
+        for (const {x: targetX, y: targetY} of tilesToAffect) {
+            // Check bounds
+            if (targetX >= 0 && targetX < this.totalWidth && targetY >= 0 && targetY < this.totalHeight) {
+                const pixelX = targetX * this.tileSize;
+                const pixelY = targetY * this.tileSize;
+                
+                // Draw preview rectangle
+                this.ctx.strokeRect(pixelX, pixelY, this.tileSize, this.tileSize);
+            }
+        }
+        
+        // Reset alpha
+        this.ctx.globalAlpha = 1.0;
+    }
+    
+    drawCanvasDropZone() {
+        // Calculate drop zone position at bottom of visible area
+        const dropZoneHeight = 60; // Height in world pixels
+        const dropZoneWidth = this.canvas.width / this.zoom; // Full width of viewport
+        
+        // Position at bottom of the visible area
+        const worldStartX = (this.viewportOffsetX + (this.viewportX * this.cellWidth * this.tileSize));
+        const worldStartY = (this.viewportOffsetY + (this.viewportY * this.cellHeight * this.tileSize));
+        const dropZoneY = worldStartY + (this.canvas.height / this.zoom) - dropZoneHeight - 20;
+        
+        // Draw drop zone background
+        this.ctx.fillStyle = 'rgba(76, 175, 80, 0.8)';
+        this.ctx.fillRect(worldStartX + 20, dropZoneY, dropZoneWidth - 40, dropZoneHeight);
+        
+        // Draw border
+        this.ctx.strokeStyle = '#4CAF50';
+        this.ctx.lineWidth = 3 / this.zoom;
+        this.ctx.setLineDash([10 / this.zoom, 5 / this.zoom]);
+        this.ctx.strokeRect(worldStartX + 20, dropZoneY, dropZoneWidth - 40, dropZoneHeight);
+        this.ctx.setLineDash([]); // Reset line dash
+        
+        // Draw text
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = `${16 / this.zoom}px Arial`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        
+        const textX = worldStartX + dropZoneWidth / 2;
+        const textY = dropZoneY + dropZoneHeight / 2;
+        
+        // Add text shadow
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        this.ctx.fillText('📁 Drop here to save cell to library', textX + 1 / this.zoom, textY + 1 / this.zoom);
+        
+        // Draw main text
+        this.ctx.fillStyle = 'white';
+        this.ctx.fillText('📁 Drop here to save cell to library', textX, textY);
+        
+        // Reset text properties
+        this.ctx.textAlign = 'start';
+        this.ctx.textBaseline = 'alphabetic';
+    }
+    
+    isDropOnCanvasDropZone(e) {
+        // Convert mouse coordinates to world coordinates
+        const rect = this.canvas.getBoundingClientRect();
+        const canvasX = e.clientX - rect.left;
+        const canvasY = e.clientY - rect.top;
+        
+        const worldPixelX = (canvasX / this.zoom) + (this.viewportX * this.cellWidth * this.tileSize) + this.viewportOffsetX;
+        const worldPixelY = (canvasY / this.zoom) + (this.viewportY * this.cellHeight * this.tileSize) + this.viewportOffsetY;
+        
+        // Calculate drop zone bounds (same as in drawCanvasDropZone)
+        const dropZoneHeight = 60;
+        const dropZoneWidth = this.canvas.width / this.zoom;
+        const worldStartX = (this.viewportOffsetX + (this.viewportX * this.cellWidth * this.tileSize));
+        const worldStartY = (this.viewportOffsetY + (this.viewportY * this.cellHeight * this.tileSize));
+        const dropZoneY = worldStartY + (this.canvas.height / this.zoom) - dropZoneHeight - 20;
+        
+        const dropZoneLeft = worldStartX + 20;
+        const dropZoneRight = worldStartX + dropZoneWidth - 20;
+        const dropZoneTop = dropZoneY;
+        const dropZoneBottom = dropZoneY + dropZoneHeight;
+        
+        // Check if mouse is within drop zone bounds
+        return worldPixelX >= dropZoneLeft && worldPixelX <= dropZoneRight &&
+               worldPixelY >= dropZoneTop && worldPixelY <= dropZoneBottom;
+    }
+    
+    // Pan and Zoom Methods
+    panViewport(deltaX, deltaY) {
+        // Convert cell deltas to pixel offsets
+        this.viewportOffsetX -= deltaX * this.cellWidth * this.tileSize;
+        this.viewportOffsetY -= deltaY * this.cellHeight * this.tileSize;
+        
+        this.constrainViewport();
+        this.render();
+        this.updateViewportInfo();
+    }
+    
+    constrainViewport() {
+        // Calculate total world size in pixels
+        const worldWidth = this.totalWidth * this.tileSize;
+        const worldHeight = this.totalHeight * this.tileSize;
+        
+        // Calculate current viewport center in world pixels
+        const currentCenterX = (this.viewportX * this.cellWidth * this.tileSize) + this.viewportOffsetX + (this.canvas.width / (2 * this.zoom));
+        const currentCenterY = (this.viewportY * this.cellHeight * this.tileSize) + this.viewportOffsetY + (this.canvas.height / (2 * this.zoom));
+        
+        // Constrain to world bounds - allow some padding at edges
+        const maxOffsetX = worldWidth - (this.canvas.width / this.zoom);
+        const maxOffsetY = worldHeight - (this.canvas.height / this.zoom);
+        
+        const totalOffsetX = (this.viewportX * this.cellWidth * this.tileSize) + this.viewportOffsetX;
+        const totalOffsetY = (this.viewportY * this.cellHeight * this.tileSize) + this.viewportOffsetY;
+        
+        const constrainedOffsetX = Math.max(0, Math.min(maxOffsetX, totalOffsetX));
+        const constrainedOffsetY = Math.max(0, Math.min(maxOffsetY, totalOffsetY));
+        
+        // Update viewport position if we hit boundaries
+        if (totalOffsetX !== constrainedOffsetX || totalOffsetY !== constrainedOffsetY) {
+            this.viewportX = Math.floor(constrainedOffsetX / (this.cellWidth * this.tileSize));
+            this.viewportY = Math.floor(constrainedOffsetY / (this.cellHeight * this.tileSize));
+            this.viewportOffsetX = constrainedOffsetX - (this.viewportX * this.cellWidth * this.tileSize);
+            this.viewportOffsetY = constrainedOffsetY - (this.viewportY * this.cellHeight * this.tileSize);
+        }
+    }
+    
+    handleWheel(e) {
+        e.preventDefault();
+        
+        // Check if Ctrl is held for brush size adjustment
+        if (e.ctrlKey || e.metaKey) {
+            const oldBrushSize = this.brushSize;
+            
+            if (e.deltaY < 0) {
+                // Scroll up - increase brush size
+                this.brushSize = Math.min(5, this.brushSize + 1);
+            } else {
+                // Scroll down - decrease brush size
+                this.brushSize = Math.max(1, this.brushSize - 1);
+            }
+            
+            if (this.brushSize !== oldBrushSize) {
+                // Update UI slider
+                document.getElementById('brushSize').value = this.brushSize;
+                document.getElementById('brushSizeValue').textContent = this.brushSize;
+                document.getElementById('brushSizeValue2').textContent = this.brushSize;
+                
+                // Update brush preview if it's being shown
+                if (this.showBrushPreview) {
+                    this.render();
+                }
+            }
+            return;
+        }
+        
+        // Normal zoom behavior
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        const zoomFactor = 1.1;
+        const oldZoom = this.zoom;
+        
+        if (e.deltaY < 0) {
+            // Zoom in
+            this.zoom = Math.min(5.0, this.zoom * zoomFactor);
+        } else {
+            // Zoom out
+            this.zoom = Math.max(0.1, this.zoom / zoomFactor);
+        }
+        
+        if (this.zoom !== oldZoom) {
+            // Zoom toward mouse cursor
+            const zoomRatio = this.zoom / oldZoom;
+            const worldMouseX = (mouseX / oldZoom) + (this.viewportX * this.cellWidth * this.tileSize) + this.viewportOffsetX;
+            const worldMouseY = (mouseY / oldZoom) + (this.viewportY * this.cellHeight * this.tileSize) + this.viewportOffsetY;
+            
+            const newWorldMouseX = (mouseX / this.zoom) + (this.viewportX * this.cellWidth * this.tileSize) + this.viewportOffsetX;
+            const newWorldMouseY = (mouseY / this.zoom) + (this.viewportY * this.cellHeight * this.tileSize) + this.viewportOffsetY;
+            
+            this.viewportOffsetX += worldMouseX - newWorldMouseX;
+            this.viewportOffsetY += worldMouseY - newWorldMouseY;
+            
+            this.constrainViewport();
+            this.render();
+            this.updateViewportInfo();
+        }
+    }
+    
+    handleKeyDown(e) {
+        const panSpeed = 50; // pixels per keypress
+        
+        switch(e.key) {
+            case 'ArrowLeft':
+            case 'a':
+            case 'A':
+                e.preventDefault();
+                this.viewportOffsetX -= panSpeed / this.zoom;
+                this.constrainViewport();
+                this.render();
+                this.updateViewportInfo();
+                break;
+            case 'ArrowRight':
+            case 'd':
+            case 'D':
+                e.preventDefault();
+                this.viewportOffsetX += panSpeed / this.zoom;
+                this.constrainViewport();
+                this.render();
+                this.updateViewportInfo();
+                break;
+            case 'ArrowUp':
+            case 'w':
+            case 'W':
+                e.preventDefault();
+                this.viewportOffsetY -= panSpeed / this.zoom;
+                this.constrainViewport();
+                this.render();
+                this.updateViewportInfo();
+                break;
+            case 'ArrowDown':
+            case 's':
+            case 'S':
+                e.preventDefault();
+                this.viewportOffsetY += panSpeed / this.zoom;
+                this.constrainViewport();
+                this.render();
+                this.updateViewportInfo();
+                break;
+        }
+    }
+    
+    updateViewportInfo() {
+        // Update UI to show current position
+        document.getElementById('viewportPos').textContent = `(${this.viewportX.toFixed(1)}, ${this.viewportY.toFixed(1)})`;
+        document.getElementById('zoomLevel').textContent = `${this.zoom.toFixed(1)}x`;
+    }
+    
+    // Cell Shelf Methods
+    loadCellShelf() {
+        const savedCells = this.getSavedCells();
+        const shelfElement = document.getElementById('cellShelf');
+        shelfElement.innerHTML = '';
+        
+        Object.keys(savedCells).forEach(cellName => {
+            const cellData = savedCells[cellName];
+            this.createCellThumbnail(cellName, cellData, shelfElement);
+        });
+    }
+    
+    createCellThumbnail(cellName, cellData, container) {
+        const thumbnail = document.createElement('div');
+        thumbnail.className = 'cell-thumbnail-shelf';
+        thumbnail.setAttribute('data-cell-name', cellName);
+        
+        // Create canvas for cell preview
+        const canvas = document.createElement('canvas');
+        canvas.width = 80;
+        canvas.height = 50;
+        const ctx = canvas.getContext('2d');
+        
+        // Render cell preview
+        this.renderCellPreview(ctx, cellData.data, 80, 50);
+        
+        // Create name label
+        const nameLabel = document.createElement('div');
+        nameLabel.className = 'cell-name';
+        nameLabel.textContent = cellName.replace('cell-', '').replace(/-/g, ':');
+        
+        // Create delete button
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = '×';
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.deleteCellFromShelf(cellName);
+        };
+        
+        thumbnail.appendChild(canvas);
+        thumbnail.appendChild(nameLabel);
+        thumbnail.appendChild(deleteBtn);
+        
+        // Add drag functionality
+        thumbnail.draggable = true;
+        thumbnail.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', cellName);
+            e.dataTransfer.setData('application/cell-data', JSON.stringify(cellData));
+            thumbnail.style.opacity = '0.5';
+        });
+        
+        thumbnail.addEventListener('dragend', () => {
+            thumbnail.style.opacity = '1';
+        });
+        
+        container.appendChild(thumbnail);
+    }
+    
+    renderCellPreview(ctx, cellData, width, height) {
+        ctx.clearRect(0, 0, width, height);
+        
+        if (!cellData || !cellData.length) return;
+        
+        const cellHeight = cellData.length;
+        const cellWidth = cellData[0] ? cellData[0].length : 0;
+        
+        const tileWidth = width / cellWidth;
+        const tileHeight = height / cellHeight;
+        
+        // Draw cell background
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        
+        // Draw tiles
+        for (let y = 0; y < cellHeight; y++) {
+            for (let x = 0; x < cellWidth; x++) {
+                const tileValue = cellData[y][x];
+                if (tileValue !== 0) {
+                    switch (tileValue) {
+                        case 1: // Blockout
+                            ctx.fillStyle = '#000000';
+                            break;
+                        case 2: // Connection tile
+                            ctx.fillStyle = '#ffff00';
+                            break;
+                    }
+                    ctx.fillRect(x * tileWidth, y * tileHeight, tileWidth, tileHeight);
+                }
+            }
+        }
+    }
+    
+    deleteCellFromShelf(cellName) {
+        if (confirm(`Delete cell "${cellName}"?`)) {
+            const savedCells = this.getSavedCells();
+            delete savedCells[cellName];
+            localStorage.setItem('cellLibrary', JSON.stringify(savedCells));
+            this.loadCellShelf(); // Refresh shelf
+        }
+    }
+    
+    setupCellShelfDragDrop() {
+        const dropZone = document.getElementById('shelfDropZone');
+        const canvas = this.canvas;
+        
+        // Setup drop zone for saving cells
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            
+            // Only allow drop if we have a selected cell
+            if (this.selectedCell) {
+                this.saveCellToShelf();
+            } else {
+                alert('Please select a cell first!');
+            }
+        });
+        
+        // Setup canvas for placing cells
+        canvas.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        
+        canvas.addEventListener('drop', (e) => {
+            e.preventDefault();
+            
+            const cellName = e.dataTransfer.getData('text/plain');
+            const cellDataStr = e.dataTransfer.getData('application/cell-data');
+            
+            if (cellName && cellDataStr) {
+                try {
+                    const cellData = JSON.parse(cellDataStr);
+                    this.placeCellFromShelf(e, cellData);
+                } catch (error) {
+                    console.error('Error parsing cell data:', error);
+                }
+            }
+        });
+    }
+    
+    saveCellToShelf() {
+        if (!this.selectedCell) return;
+        
+        // Generate auto name with timestamp
+        const now = new Date();
+        const timestamp = now.toISOString().slice(0, 19).replace(/[T:]/g, '-');
+        const cellName = `cell-${timestamp}`;
+        
+        // Get cell data
+        const cellData = this.getCellData(this.selectedCell.x, this.selectedCell.y);
+        
+        // Create cell library entry
+        const cellEntry = {
+            name: cellName,
+            timestamp: now.toISOString(),
+            cellSize: { width: this.cellWidth, height: this.cellHeight },
+            data: cellData,
+            isActive: this.isCellActive(this.selectedCell.x, this.selectedCell.y),
+            version: '1.0'
+        };
+        
+        // Save to localStorage
+        const savedCells = this.getSavedCells();
+        savedCells[cellName] = cellEntry;
+        localStorage.setItem('cellLibrary', JSON.stringify(savedCells));
+        
+        // Refresh shelf to show new cell
+        this.loadCellShelf();
+        
+        // Show feedback
+        this.showTemporaryMessage(`Cell saved: ${cellName.replace('cell-', '').replace(/-/g, ':')}`);
+    }
+    
+    placeCellFromShelf(e, cellData) {
+        // Get the cell position where the drop occurred
+        const tile = this.getTileFromMouse(e);
+        if (!tile) return;
+        
+        const cellX = Math.floor(tile.x / this.cellWidth);
+        const cellY = Math.floor(tile.y / this.cellHeight);
+        
+        // Place the cell data
+        this.setCellData(cellX, cellY, cellData.data);
+        this.render();
+        
+        // Select the placed cell
+        this.selectedCell = { x: cellX, y: cellY };
+        document.getElementById('selectedCellX').textContent = cellX;
+        document.getElementById('selectedCellY').textContent = cellY;
+        document.getElementById('cellMenu').style.display = 'block';
+        
+        // Show feedback
+        this.showTemporaryMessage(`Cell placed at (${cellX}, ${cellY})`);
+    }
+    
+    showTemporaryMessage(message) {
+        // Create temporary message element
+        const msgElement = document.createElement('div');
+        msgElement.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 4px;
+            z-index: 1000;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        `;
+        msgElement.textContent = message;
+        
+        document.body.appendChild(msgElement);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            if (msgElement.parentNode) {
+                msgElement.parentNode.removeChild(msgElement);
+            }
+        }, 3000);
     }
     
 }

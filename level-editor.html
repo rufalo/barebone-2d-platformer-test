@@ -29,11 +29,13 @@
         }
         
         .canvas-container {
+            position: relative;
             background: white;
             border: 2px solid #333;
             border-radius: 8px;
             padding: 10px;
         }
+        
         
         #tileCanvas {
             border: 1px solid #ccc;
@@ -62,6 +64,25 @@
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
+        }
+        
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        
+        .checkbox-container input[type="checkbox"] {
+            width: auto;
+            margin: 0;
+        }
+        
+        .checkbox-label {
+            font-size: 14px;
+            font-weight: normal;
+            margin: 0;
+            cursor: pointer;
         }
         
         input, select, button {
@@ -245,6 +266,133 @@
             text-overflow: ellipsis;
         }
         
+        /* Cell Shelf Styles */
+        .cell-shelf {
+            margin-top: 20px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 8px;
+            padding: 15px;
+        }
+        
+        .shelf-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .shelf-header h3 {
+            margin: 0;
+            color: #333;
+        }
+        
+        .shelf-info {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .shelf-container {
+            display: flex;
+            gap: 15px;
+            min-height: 120px;
+        }
+        
+        .shelf-items {
+            flex: 1;
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+            overflow-x: auto;
+            align-items: flex-start;
+        }
+        
+        .shelf-drop-zone {
+            width: 150px;
+            background: #e8f4fd;
+            border: 2px dashed #4d9fff;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            cursor: default;
+            transition: all 0.3s ease;
+        }
+        
+        .shelf-drop-zone.drag-over {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        
+        .cell-thumbnail-shelf {
+            flex-shrink: 0;
+            width: 80px;
+            height: 80px;
+            border: 2px solid #ccc;
+            border-radius: 6px;
+            padding: 6px;
+            background: white;
+            cursor: grab;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .cell-thumbnail-shelf:hover {
+            border-color: #4d9fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .cell-thumbnail-shelf:active {
+            cursor: grabbing;
+        }
+        
+        .cell-thumbnail-shelf canvas {
+            width: 100%;
+            height: 70px;
+            border: 1px solid #eee;
+            border-radius: 2px;
+        }
+        
+        .cell-thumbnail-shelf .cell-name {
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+            margin-top: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .cell-thumbnail-shelf .delete-btn {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 16px;
+            height: 16px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            font-size: 10px;
+            cursor: pointer;
+            display: none;
+        }
+        
+        .cell-thumbnail-shelf:hover .delete-btn {
+            display: block;
+        }
+
         @media (max-width: 768px) {
             .editor-panel {
                 flex-direction: column;
@@ -252,6 +400,15 @@
             
             .controls {
                 min-width: auto;
+            }
+            
+            .shelf-container {
+                flex-direction: column;
+            }
+            
+            .shelf-drop-zone {
+                width: auto;
+                min-height: 60px;
             }
         }
         
@@ -407,69 +564,92 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Level Editor - Multi-Cell Grid System</h1>
-            <div class="info">
-                Draw across multiple level cells at once in a 3x3 grid layout.<br>
-                Each cell is 16x10 tiles, creating a total canvas of 48x30 tiles.
-            </div>
+            <h1>Room Blockout Mode</h1>
         </div>
         
         <div class="editor-panel">
             <div class="canvas-container">
                 <canvas id="tileCanvas" width="1536" height="960"></canvas>
                 <div class="cell-info">
-                    Multi-Cell Grid: <span id="gridSize">3x3</span> cells | 
-                    Cell Size: <span id="cellSize">16x10</span> tiles | 
-                    Total Grid: <span id="totalSize">48x30</span> tiles | 
-                    Tile Size: <span id="tileSize">32x32</span> px
+                    Room: <span id="gridSize">9x9</span> cells | 
+                    Cell: <span id="cellSize">8x5</span> tiles | 
+                    Total: <span id="totalSize">72x45</span> tiles | 
+                    Tile: <span id="tileSize">32x32</span> px
+                </div>
+                <div class="viewport-info" style="font-size: 12px; color: #666; margin-top: 5px;">
+                    Viewport: <span id="viewportPos">(3.0, 3.0)</span> | 
+                    Zoom: <span id="zoomLevel">1.0x</span> |
+                    <strong>Controls:</strong> WASD/Arrows=Pan, Mouse Wheel=Zoom, Middle Click=Drag
+                </div>
+                
+                <!-- Cell Shelf -->
+                <div class="cell-shelf">
+                    <div class="shelf-header">
+                        <h3>Cell Library</h3>
+                        <span class="shelf-info">Drag cells to/from shelf to save/load</span>
+                    </div>
+                    <div class="shelf-container">
+                        <div class="shelf-items" id="cellShelf">
+                            <!-- Cell thumbnails will be added here dynamically -->
+                        </div>
+                        <div class="shelf-drop-zone" id="shelfDropZone">
+                            Drop selected cell here to save
+                        </div>
+                    </div>
                 </div>
             </div>
             
             <div class="controls">
                 <div class="control-group">
-                    <h3>Grid Configuration</h3>
-                    <label for="gridCols">Grid Columns:</label>
-                    <input type="range" id="gridCols" min="1" max="5" value="3">
-                    <span id="gridColsValue">3</span>
-                    
-                    <label for="gridRows">Grid Rows:</label>
-                    <input type="range" id="gridRows" min="1" max="5" value="3">
-                    <span id="gridRowsValue">3</span>
-                    
-                    <label for="cellWidth">Cell Width (tiles):</label>
-                    <input type="range" id="cellWidth" min="8" max="20" value="16">
-                    <span id="cellWidthValue">16</span>
-                    
-                    <label for="cellHeight">Cell Height (tiles):</label>
-                    <input type="range" id="cellHeight" min="6" max="16" value="10">
-                    <span id="cellHeightValue">10</span>
-                    
-                    <label for="tilePixelSize">Tile Size (pixels):</label>
-                    <input type="range" id="tilePixelSize" min="16" max="48" value="32">
-                    <span id="tileSizeValue">32</span>
+                    <h3>Drawing Modes</h3>
+                    <button id="blockoutMode" class="tool-button active">Blockout Mode</button>
+                    <button id="cellOpeningTile" class="tool-button">Room Connection Tile</button>
                 </div>
                 
                 <div class="control-group">
-                    <h3>Drawing Tools</h3>
-                    <button id="toggleTool" class="tool-button active">Toggle Tool</button>
-                    <button id="drawTool" class="tool-button">Draw Tool</button>
-                    <button id="eraseTool" class="tool-button">Erase Tool</button>
+                    <h3>Brush Settings</h3>
+                    <label for="brushSize">Brush Size:</label>
+                    <input type="range" id="brushSize" min="1" max="5" value="1" step="1">
+                    <div class="info">Size: <span id="brushSizeValue">1</span>x<span id="brushSizeValue2">1</span></div>
                 </div>
+                
+                <div class="control-group">
+                    <h3>Cell Mode</h3>
+                    <button id="selectCellMode" class="tool-button">Select Cell Mode</button>
+                    <button id="cloneMode" class="tool-button">Clone Mode</button>
+                    <div class="checkbox-container">
+                        <input type="checkbox" id="swapMode" checked>
+                        <label for="swapMode" class="checkbox-label">Swap cells when dragging</label>
+                    </div>
+                </div>
+                
+                <div class="control-group" id="cellMenu" style="display: none;">
+                    <h3>Selected Cell Actions</h3>
+                    <div class="selected-info">Cell (<span id="selectedCellX">0</span>, <span id="selectedCellY">0</span>) selected</div>
+                    <button id="clearCell" class="clear-button">Clear Cell</button>
+                    <button id="fillCell">Fill Cell</button>
+                </div>
+                
+                <div class="control-group">
+                    <h3>Room Library</h3>
+                    <button id="saveRoom">Save Room</button>
+                    <button id="loadRoom">Load Room</button>
+                </div>
+                
                 
                 <div class="control-group">
                     <h3>Grid Actions</h3>
                     <button id="clearGrid" class="clear-button">Clear All</button>
-                    <button id="fillGrid">Fill All</button>
                 </div>
                 
-                <div class="control-group">
+                <div class="control-group" style="display: none;">
                     <h3>Cell Boundaries</h3>
                     <label>
                         <input type="checkbox" id="showBorders" checked>
                         Show cell borders
                     </label>
                     <label for="borderColor">Border color:</label>
-                    <input type="color" id="borderColor" value="#0066CC">
+                    <input type="color" id="borderColor" value="#4d9fff">
                 </div>
             </div>
         </div>

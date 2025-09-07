@@ -1,6 +1,6 @@
-# Basic Platformer Character Test
+# 2D Platformer Game & Level Editor
 
-A 2D platformer character test built with HTML5 and Phaser 3, focusing on character movement mechanics, platforms, shooting, and enemy AI systems.
+A comprehensive 2D platformer project built with HTML5 and Phaser 3, featuring advanced character mechanics and a complete hierarchical level editor system for rapid level creation.
 
 ## 🎮 **[PLAY THE GAME HERE](https://rufalo.github.io/barebone-2d-platformer-test/)**
 
@@ -36,23 +36,32 @@ A 2D platformer character test built with HTML5 and Phaser 3, focusing on charac
 - **Physics**: Arcade Physics (built into Phaser)
 - **Graphics**: Procedurally generated colored rectangles (placeholder graphics)
 
-## 🚀 Running the Game
+## 🚀 Running the Project
 
-Simply open `index.html` in a web browser. No build process required - runs directly in browser.
+- **Main Game**: Open `index.html` in a web browser
+- **Level Editor**: Open `level-editor.html` in a web browser
+
+No build process required - runs directly in browser.
 
 ## 📁 Project Structure
 
 ```
-├── index.html              # Main HTML file
+├── index.html              # Main platformer game
+├── level-editor.html       # Hierarchical level editor
 ├── css/
 │   └── style.css           # Game styling and UI
 ├── js/
 │   ├── game.js            # Main game setup and scene
-│   ├── player.js          # Character controller
+│   ├── player.js          # Character controller with state machine
 │   ├── level.js           # Platform and level management  
-│   └── target.js          # Shooting targets
+│   ├── target.js          # Shooting targets
+│   ├── debug.js           # Debug menu system
+│   └── level-editor.js    # Complete level editor system (1500+ lines)
 ├── assets/                 # Future sprite and sound assets
 ├── vibe coding logs/       # Development logs and design docs
+├── nextsteps.md           # Development roadmap and technical architecture
+├── level-editor-progress.md # Current level editor status
+├── CLAUDE.md              # Development guidance and project overview
 └── README.md              # This file
 ```
 
@@ -66,6 +75,58 @@ Simply open `index.html` in a web browser. No build process required - runs dire
 | Dash | X key |
 | Crouch | S or Down Arrow |
 | Shoot | Z key |
+
+## 🏗️ Level Editor System
+
+### **Room Blockout Mode** - Complete Hierarchical Grid Editor
+
+The level editor implements a sophisticated multi-scale editing system designed for rapid level creation with modular, reusable components.
+
+#### Key Features
+- **9x9 Cell Grid**: Room composed of 81 cells (8x5 tiles each)
+- **Inverted Drawing**: Cells start filled, drawing creates walkable space
+- **Star Pattern Brushes**: 5 brush sizes with unique patterns (1x1, plus, 3x3, extended, 5x5)
+- **Real-time Preview**: Orange overlay shows exact tiles affected by brush
+- **Visual Cell Library**: Drag-and-drop system with thumbnail previews
+
+#### Drawing System
+- **Blockout Mode**: Carve empty spaces (left-click = empty, right-click = fill)
+- **Connection Tiles**: Place yellow connection markers on cell edges
+- **Cell Management**: Select, move, swap, clear, and fill individual cells
+- **Brush Control**: Size 1-5 via slider or Ctrl+Scroll wheel
+
+#### Visual Design
+- **Active/Inactive Cells**: White background for modified cells, gray for defaults  
+- **Zoom & Pan**: Mouse wheel zoom (0.1x-5.0x), middle-click or WASD pan
+- **Smart Grid**: Darker grid lines visible on all cell types
+- **Cell Borders**: Light blue borders distinguish cell boundaries
+
+#### Cell Library
+- **Save System**: Drag selected cells to green canvas drop zone
+- **Load System**: Drag thumbnails from shelf to canvas
+- **Persistence**: Auto-saved to localStorage with timestamps
+- **Management**: Hover delete, visual previews, organized shelf
+
+### Level Editor Controls
+
+| Action | Controls |
+|--------|----------|
+| **Navigation** | |
+| Pan | WASD, Arrow Keys, or Middle Mouse + Drag |
+| Zoom | Mouse Wheel |
+| Brush Size | Ctrl + Scroll Wheel or Slider |
+| **Drawing** | |
+| Carve/Draw | Left Click |
+| Fill | Right Click |
+| **Modes** | |
+| Blockout Mode | Primary drawing tool |
+| Connection Tile | Place yellow connectors |  
+| Select Cell | Click cell to select |
+| Clone Mode | Duplicate cells |
+| **Cell Operations** | |
+| Save Cell | Drag selected cell to green drop zone |
+| Load Cell | Drag thumbnail to canvas |
+| Delete Cell | Hover thumbnail → click × |
 
 ## 🔧 Development Features
 
@@ -98,22 +159,55 @@ The `vibe coding logs/` directory contains detailed documentation of development
 - **Reset Orbs**: Purple rectangles (9B59B6)
 - **Moving Platforms**: Purple rectangles (9932CC)
 
-## 🚧 Future Enhancements
+## 🚧 Development Roadmap
 
+### ✅ Completed (Phase 1)
+- **Complete Character Controller**: Advanced movement with state machine
+- **Debug Menu System**: Real-time property adjustment with persistence  
+- **Room Blockout Mode**: Full hierarchical level editor with cell library
+- **Visual Cell System**: Drag-and-drop interface with canvas-rendered drop zones
+- **Brush System**: Star pattern brushes with real-time preview
+
+### 🔄 Next Phase: Detailed Room Editor
+- **16x10 Tile Resolution**: Each cell becomes detailed tile editor
+- **Seamless Zoom**: Click cell in room mode → edit detailed tiles  
+- **Tile-Level Tools**: Precise drawing and refinement tools
+- **Dual-Scale Workflow**: Rough blockout → detailed polish
+
+### 🔮 Future Phases: World Editor  
+- **Multi-Room System**: Compose worlds from saved rooms
+- **World Map Interface**: Visual room connection system
+- **Level Generation**: Export game-ready level data
+- **Complete Integration**: Level editor → playable game levels
+
+### 🎨 Visual & Audio Enhancements
 - Replace placeholder graphics with actual sprites
-- Add sound effects and music
+- Add sound effects and music  
 - Implement complete enemy system
 - Add particle effects and animations
-- Create multiple levels
-- Add game states (menu, game over, etc.)
+- Create game states (menu, game over, etc.)
 
 ## 🐛 Known Issues
 
 All major physics and collision issues have been resolved. See development logs for detailed problem-solving documentation.
 
+## 📚 Documentation
+
+### Development Guides
+- **`CLAUDE.md`**: Comprehensive project overview and development guidance
+- **`nextsteps.md`**: Long-term technical roadmap and architecture
+- **`level-editor-progress.md`**: Current implementation status and next steps
+
+### Development Logs
+The `vibe coding logs/` directory contains detailed problem-solving documentation:
+- `moving-platform-debug-log.md` - Complete troubleshooting for platform system
+- `bullet-physics-debug-log.md` - Physics timing solutions for projectiles  
+- `enemy-system-design-spec.md` - Comprehensive enemy AI design
+- Additional implementation and debugging logs
+
 ## 🤝 Contributing
 
-This is a learning project documenting the development process. The detailed logs in `vibe coding logs/` provide insight into the problem-solving approach used during development.
+This is a learning project showcasing both game development and level editor architecture. The extensive documentation provides insight into the development process and technical decisions.
 
 ---
 
