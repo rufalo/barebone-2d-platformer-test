@@ -393,6 +393,92 @@
             display: block;
         }
 
+        /* Tabs */
+        .tabs {
+            display: flex;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ccc;
+        }
+        
+        .tab {
+            padding: 8px 16px;
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+            border-bottom: none;
+            cursor: pointer;
+            margin-right: 2px;
+            border-radius: 4px 4px 0 0;
+            transition: background 0.2s ease;
+        }
+        
+        .tab:hover {
+            background: #e8e8e8;
+        }
+        
+        .tab.active {
+            background: white;
+            border-bottom: 1px solid white;
+            margin-bottom: -1px;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        /* Color Swatches */
+        .color-input-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 8px;
+        }
+        
+        .color-swatch {
+            width: 30px;
+            height: 20px;
+            border: 2px solid #333;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+        
+        .color-swatch:hover {
+            border-color: #007acc;
+            transform: scale(1.1);
+        }
+        
+        .color-input-group label {
+            flex: 1;
+            margin: 0;
+            font-size: 14px;
+        }
+        
+        .hidden-color-input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .reset-button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .reset-button:hover {
+            background: #ff5252;
+        }
+
         @media (max-width: 768px) {
             .editor-panel {
                 flex-direction: column;
@@ -409,6 +495,15 @@
             .shelf-drop-zone {
                 width: auto;
                 min-height: 60px;
+            }
+            
+            .tabs {
+                flex-wrap: wrap;
+            }
+            
+            .tab {
+                font-size: 12px;
+                padding: 6px 12px;
             }
         }
         
@@ -600,56 +695,104 @@
             </div>
             
             <div class="controls">
-                <div class="control-group">
-                    <h3>Drawing Modes</h3>
-                    <button id="blockoutMode" class="tool-button active">Blockout Mode</button>
-                    <button id="cellOpeningTile" class="tool-button">Room Connection Tile</button>
+                <div class="tabs">
+                    <div class="tab active" id="toolsTab">Tools</div>
+                    <div class="tab" id="settingsTab">Visual Settings</div>
                 </div>
                 
-                <div class="control-group">
-                    <h3>Brush Settings</h3>
-                    <label for="brushSize">Brush Size:</label>
-                    <input type="range" id="brushSize" min="1" max="5" value="1" step="1">
-                    <div class="info">Size: <span id="brushSizeValue">1</span>x<span id="brushSizeValue2">1</span></div>
-                </div>
-                
-                <div class="control-group">
-                    <h3>Cell Mode</h3>
-                    <button id="selectCellMode" class="tool-button">Select Cell Mode</button>
-                    <button id="cloneMode" class="tool-button">Clone Mode</button>
-                    <div class="checkbox-container">
-                        <input type="checkbox" id="swapMode" checked>
-                        <label for="swapMode" class="checkbox-label">Swap cells when dragging</label>
+                <!-- Tools Tab Content -->
+                <div id="toolsContent" class="tab-content active">
+                    <div class="control-group">
+                        <h3>Drawing Modes</h3>
+                        <button id="paintMode" class="tool-button active">Paint Mode</button>
+                        
+                        <div class="checkbox-container" style="margin-top: 10px;">
+                            <input type="checkbox" id="autoOutline">
+                            <label for="autoOutline" class="checkbox-label">Auto-outline</label>
+                        </div>
+                        
+                        <div class="info" style="margin-top: 10px; font-size: 12px;">
+                            <strong>Controls:</strong><br>
+                            Left-click: Empty tiles (0)<br>
+                            Right-click: Filled tiles (1)<br>
+                            <strong>Shift + click:</strong> Eraser to transparent (-1)
+                        </div>
                     </div>
+                    
+                    <div class="control-group">
+                        <h3>Brush Settings</h3>
+                        <label for="brushSize">Brush Size:</label>
+                        <input type="range" id="brushSize" min="1" max="5" value="1" step="1">
+                        <div class="info">Size: <span id="brushSizeValue">1</span>x<span id="brushSizeValue2">1</span></div>
+                    </div>
+                    
+                    <div class="control-group">
+                        <h3>Cell Mode</h3>
+                        <button id="selectCellMode" class="tool-button">Select Cell Mode</button>
+                        <button id="pasteMode" class="tool-button">Paste Mode</button>
+                        <button id="cloneMode" class="tool-button">Clone Mode</button>
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="swapMode" checked>
+                            <label for="swapMode" class="checkbox-label">Swap cells when dragging</label>
+                        </div>
+                    </div>
+                    
+                    <div class="control-group" id="cellMenu" style="display: none;">
+                        <h3>Selected Cell Actions</h3>
+                        <div class="selected-info">Cell (<span id="selectedCellX">0</span>, <span id="selectedCellY">0</span>) selected</div>
+                        <button id="clearCell" class="clear-button">Clear Cell</button>
+                        <button id="fillCell">Fill Cell</button>
+                    </div>
+                    
+                    <div class="control-group">
+                        <h3>Room Library</h3>
+                        <button id="saveRoom">Save Room</button>
+                        <button id="loadRoom">Load Room</button>
+                    </div>
+                    
+                    <div class="control-group">
+                        <h3>Grid Actions</h3>
+                        <button id="clearGrid" class="clear-button">Clear All</button>
+                    </div>
+                    
                 </div>
                 
-                <div class="control-group" id="cellMenu" style="display: none;">
-                    <h3>Selected Cell Actions</h3>
-                    <div class="selected-info">Cell (<span id="selectedCellX">0</span>, <span id="selectedCellY">0</span>) selected</div>
-                    <button id="clearCell" class="clear-button">Clear Cell</button>
-                    <button id="fillCell">Fill Cell</button>
-                </div>
-                
-                <div class="control-group">
-                    <h3>Room Library</h3>
-                    <button id="saveRoom">Save Room</button>
-                    <button id="loadRoom">Load Room</button>
-                </div>
-                
-                
-                <div class="control-group">
-                    <h3>Grid Actions</h3>
-                    <button id="clearGrid" class="clear-button">Clear All</button>
-                </div>
-                
-                <div class="control-group" style="display: none;">
-                    <h3>Cell Boundaries</h3>
-                    <label>
-                        <input type="checkbox" id="showBorders" checked>
-                        Show cell borders
-                    </label>
-                    <label for="borderColor">Border color:</label>
-                    <input type="color" id="borderColor" value="#4d9fff">
+                <!-- Settings Tab Content -->
+                <div id="settingsContent" class="tab-content">
+                    <div class="control-group">
+                        <h3>Visual Settings</h3>
+                        
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="showBorders" checked>
+                            <label for="showBorders" class="checkbox-label">Show cell borders</label>
+                        </div>
+                        
+                        <div class="color-input-group">
+                            <div class="color-swatch" id="borderColorSwatch" style="background-color: #4d9fff;"></div>
+                            <label for="borderColor">Cell border color</label>
+                            <input type="color" id="borderColor" value="#4d9fff" class="hidden-color-input">
+                        </div>
+                        
+                        <div class="color-input-group">
+                            <div class="color-swatch" id="gridLineColorSwatch" style="background-color: #999999;"></div>
+                            <label for="gridLineColor">Grid line color</label>
+                            <input type="color" id="gridLineColor" value="#999999" class="hidden-color-input">
+                        </div>
+                        
+                        <div class="color-input-group">
+                            <div class="color-swatch" id="checkerColor1Swatch" style="background-color: #d0d0d0;"></div>
+                            <label for="checkerColor1">Checker color 1</label>
+                            <input type="color" id="checkerColor1" value="#d0d0d0" class="hidden-color-input">
+                        </div>
+                        
+                        <div class="color-input-group">
+                            <div class="color-swatch" id="checkerColor2Swatch" style="background-color: #e6f3ff;"></div>
+                            <label for="checkerColor2">Checker color 2</label>
+                            <input type="color" id="checkerColor2" value="#e6f3ff" class="hidden-color-input">
+                        </div>
+                        
+                        <button id="resetSettings" class="reset-button">Reset to Defaults</button>
+                    </div>
                 </div>
             </div>
         </div>

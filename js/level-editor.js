@@ -6,7 +6,7 @@ class LevelEditor {
         // Multi-cell room configuration
         this.totalGridCols = 9;   // Total number of cells horizontally
         this.totalGridRows = 9;   // Total number of cells vertically
-        this.cellWidth = 8;       // Tiles per cell width
+        this.cellWidth = 5;       // Tiles per cell width
         this.cellHeight = 5;      // Tiles per cell height
         this.tileSize = 32;       // Pixels per tile
         
@@ -38,18 +38,34 @@ class LevelEditor {
         this.activeCells = new Set(); // Set of "x,y" strings for active cells
         
         // Drawing modes
-        this.currentMode = 'blockout'; // 'blockout', 'selectCell', 'cellOpening', 'clone'
+        this.currentMode = 'paint'; // 'paint', 'selectCell', 'clone', 'paste'
+        
+        // Single cell selection (legacy)
         this.selectedCell = null; // {x, y} in cell coordinates
         this.isDraggingCell = false;
         this.dragStartCell = null;
         this.swapMode = true; // Default to swap mode enabled
         this.isCloneMode = false;
         
+        // Multi-cell rectangle selection (new)
+        this.selectionStart = null; // {x, y} in cell coordinates where selection started
+        this.selectionEnd = null;   // {x, y} in cell coordinates where selection ends
+        this.isSelecting = false;   // Whether we're currently drawing selection rectangle
+        this.selectedCells = [];    // Array of selected cell coordinates [{x, y}, ...]
+        
+        // Copy/paste system
+        this.copiedPattern = null;  // Stores copied tile data and dimensions
+        this.pastePreviewPos = null; // {x, y} in cell coordinates for paste preview
+        
+        
         // Drawing state
         this.isDrawing = false;
         this.lastDrawnTile = null;
         this.currentTileType = 1; // 1 = blockout, 2 = cell opening
         this.brushSize = 1; // Brush size for drawing
+        this.targetDrawState = null; // For setState mode: target state to apply during current draw session
+        this.setStateSampleMode = false; // For setState mode: whether we're sampling (right-click) vs toggling (left-click)
+        this.isShiftPressed = false; // Track shift key for eraser mode
         
         // Pan state
         this.isPanning = false;
@@ -66,13 +82,19 @@ class LevelEditor {
         // Visual settings
         this.showBorders = true;
         this.borderColor = '#4d9fff';
+        this.gridLineColor = '#999999';
+        this.checkerColor1 = '#d0d0d0';
+        this.checkerColor2 = '#e6f3ff';
+        this.autoOutline = false;
         
         // Initialize
         this.initializeTileData();
         this.setupEventListeners();
         this.setupUI();
         this.updateCanvasSize();
-        this.setMode('blockout'); // Initialize with blockout mode
+        this.loadSettings(); // Load visual settings
+        this.setMode('paint'); // Initialize with paint mode
+        this.clearOldCellLibrary(); // Clear old 8x5 cell library
         this.loadCellShelf(); // Load saved cells into shelf
     }
     
@@ -81,12 +103,12 @@ class LevelEditor {
         for (let y = 0; y < this.totalHeight; y++) {
             this.tileData[y] = [];
             for (let x = 0; x < this.totalWidth; x++) {
-                // All tiles start filled (1 = blockout)
-                this.tileData[y][x] = 1;
+                // All tiles start transparent (-1 = transparent/empty canvas)
+                this.tileData[y][x] = -1;
             }
         }
         
-        // Initialize all cells as inactive (all filled by default - no modifications)
+        // Initialize all cells as inactive (all transparent by default - no modifications)
         this.activeCells = new Set();
     }
     
@@ -125,6 +147,7 @@ class LevelEditor {
         
         // Keyboard events for panning
         document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        document.addEventListener('keyup', (e) => this.handleKeyUp(e));
         
         // Prevent context menu on right click
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -137,9 +160,9 @@ class LevelEditor {
     
     setupUI() {
         // Mode buttons
-        document.getElementById('blockoutMode').addEventListener('click', () => this.setMode('blockout'));
+        document.getElementById('paintMode').addEventListener('click', () => this.setMode('paint'));
         document.getElementById('selectCellMode').addEventListener('click', () => this.setMode('selectCell'));
-        document.getElementById('cellOpeningTile').addEventListener('click', () => this.setMode('cellOpening'));
+        document.getElementById('pasteMode').addEventListener('click', () => this.setMode('paste'));
         document.getElementById('cloneMode').addEventListener('click', () => this.setMode('clone'));
         
         // Cell actions
@@ -156,12 +179,47 @@ class LevelEditor {
         // Border controls
         document.getElementById('showBorders').addEventListener('change', (e) => {
             this.showBorders = e.target.checked;
+            this.saveSettings();
             this.render();
         });
         
+        document.getElementById('autoOutline').addEventListener('change', (e) => {
+            this.autoOutline = e.target.checked;
+            this.saveSettings();
+        });
+        
+        // Color inputs (hidden, triggered by swatches)
         document.getElementById('borderColor').addEventListener('change', (e) => {
             this.borderColor = e.target.value;
+            document.getElementById('borderColorSwatch').style.backgroundColor = e.target.value;
+            this.saveSettings();
             this.render();
+        });
+        
+        document.getElementById('gridLineColor').addEventListener('change', (e) => {
+            this.gridLineColor = e.target.value;
+            document.getElementById('gridLineColorSwatch').style.backgroundColor = e.target.value;
+            this.saveSettings();
+            this.render();
+        });
+        
+        document.getElementById('checkerColor1').addEventListener('change', (e) => {
+            this.checkerColor1 = e.target.value;
+            document.getElementById('checkerColor1Swatch').style.backgroundColor = e.target.value;
+            this.saveSettings();
+            this.render();
+        });
+        
+        document.getElementById('checkerColor2').addEventListener('change', (e) => {
+            this.checkerColor2 = e.target.value;
+            document.getElementById('checkerColor2Swatch').style.backgroundColor = e.target.value;
+            this.saveSettings();
+            this.render();
+        });
+        
+        // Reset settings button
+        document.getElementById('resetSettings').addEventListener('click', () => {
+            this.resetSettingsToDefaults();
         });
         
         // Swap mode toggle
@@ -178,6 +236,12 @@ class LevelEditor {
         
         // Cell shelf drag and drop
         this.setupCellShelfDragDrop();
+        
+        // Tab switching
+        this.setupTabs();
+        
+        // Color swatch clicks
+        this.setupColorSwatches();
     }
     
     
@@ -214,14 +278,18 @@ class LevelEditor {
             return;
         }
         
-        if (this.currentMode === 'selectCell' || this.currentMode === 'clone') {
+        if (this.currentMode === 'selectCell' || this.currentMode === 'clone' || this.currentMode === 'paste') {
             this.handleCellMouseDown(e);
             return;
         }
         
         this.isDrawing = true;
         this.lastDrawnTile = null;
+        this.targetDrawState = null; // Reset target state for new drawing session
+        this.setStateSampleMode = (this.currentMode === 'setState' && e.button === 0); // Left-click in setState mode
         this.drawingMode = e.button === 0 ? 'draw' : 'erase'; // 0 = left click, 2 = right click
+        
+        
         this.handleTileInteraction(e);
     }
     
@@ -242,7 +310,7 @@ class LevelEditor {
             return;
         }
         
-        if (this.isDraggingCell && this.currentMode === 'selectCell') {
+        if ((this.isDraggingCell || this.isSelecting) && this.currentMode === 'selectCell') {
             this.handleCellDrag(e);
             return;
         }
@@ -267,8 +335,23 @@ class LevelEditor {
             return;
         }
         
+        if (this.isSelecting && this.currentMode === 'selectCell') {
+            // Complete rectangle selection
+            this.isSelecting = false;
+            this.canvas.style.cursor = 'pointer';
+            return;
+        }
+        
         this.isDrawing = false;
         this.lastDrawnTile = null;
+        this.targetDrawState = null; // Clear target state when drawing ends
+        this.setStateSampleMode = false; // Reset sample mode
+        
+        
+        // Apply auto-outline if enabled
+        if (this.autoOutline) {
+            this.applyAutoOutline();
+        }
         
         // Update brush preview when not drawing
         if (e) {
@@ -287,12 +370,6 @@ class LevelEditor {
             return;
         }
         
-        // Check if connection tiles can be placed here
-        if (this.currentTileType === 2 && this.drawingMode === 'draw') {
-            if (!this.isOnCellEdge(tile.x, tile.y)) {
-                return; // Don't allow placement if not on cell edge
-            }
-        }
         
         this.lastDrawnTile = tile;
         
@@ -305,23 +382,19 @@ class LevelEditor {
         for (const {x: targetX, y: targetY} of tilesToAffect) {
             // Check bounds
             if (targetX >= 0 && targetX < this.totalWidth && targetY >= 0 && targetY < this.totalHeight) {
-                    // Check if connection tiles can be placed here
-                    if (this.currentTileType === 2 && this.drawingMode === 'draw') {
-                        if (!this.isOnCellEdge(targetX, targetY)) {
-                            continue; // Don't allow placement if not on cell edge
-                        }
-                    }
                     
-                    // Use mouse button to determine draw/erase
-                    if (this.drawingMode === 'draw') {
-                        // Drawing now creates empty space (0) by default, unless placing connection tiles
-                        if (this.currentTileType === 2) {
-                            this.tileData[targetY][targetX] = 2; // Place connection tile
-                        } else {
-                            this.tileData[targetY][targetX] = 0; // Create empty space
+                    // Handle different drawing modes
+                    if (this.currentMode === 'paint') {
+                        // Paint mode: direct tile painting with shift eraser
+                        if (this.isShiftPressed) {
+                            // Shift + paint = eraser mode (set to transparent)
+                            this.tileData[targetY][targetX] = -1;
+                        } else if (this.drawingMode === 'draw') {
+                            this.tileData[targetY][targetX] = 0; // Left click = empty/white tiles
+                        } else if (this.drawingMode === 'erase') {
+                            this.tileData[targetY][targetX] = 1; // Right click = filled/black tiles
                         }
-                    } else if (this.drawingMode === 'erase') {
-                        this.tileData[targetY][targetX] = 1; // Fill back in with blockout
+                    
                     }
                     
                     // Track affected cells for activity updates
@@ -395,7 +468,7 @@ class LevelEditor {
         }
         
         // Only show brush preview in drawing modes
-        if (this.currentMode === 'blockout' || this.currentMode === 'cellOpening') {
+        if (this.currentMode === 'paint') {
             this.showBrushPreview = true;
             this.brushPreviewTile = tile;
             this.render();
@@ -468,9 +541,19 @@ class LevelEditor {
             this.drawCellBorders();
         }
         
-        // Draw selected cell highlight
+        // Draw selected cell highlight (legacy single cell)
         if (this.selectedCell && this.currentMode === 'selectCell') {
             this.drawSelectedCellHighlight();
+        }
+        
+        // Draw multiple cell selection highlight
+        if (this.selectedCells.length > 0 && this.currentMode === 'selectCell') {
+            this.drawMultiCellSelectionHighlight();
+        }
+        
+        // Draw selection rectangle while selecting
+        if (this.isSelecting && this.selectionStart && this.selectionEnd) {
+            this.drawSelectionRectangle();
         }
         
         // Draw brush preview
@@ -505,8 +588,12 @@ class LevelEditor {
                 const cellPixelWidth = this.cellWidth * this.tileSize;
                 const cellPixelHeight = this.cellHeight * this.tileSize;
                 
-                // Fill cell background
-                this.ctx.fillStyle = isActive ? '#ffffff' : '#e8e8e8';
+                // Fill cell background - different colors for active vs inactive
+                if (isActive) {
+                    this.ctx.fillStyle = '#ffffff'; // White for active cells (with content)
+                } else {
+                    this.ctx.fillStyle = '#f5f5f5'; // Light gray for inactive cells (no content)
+                }
                 this.ctx.fillRect(pixelX, pixelY, cellPixelWidth, cellPixelHeight);
             }
         }
@@ -522,32 +609,27 @@ class LevelEditor {
         const pixelY = worldY * this.tileSize;
         const tileValue = this.tileData[worldY][worldX];
         
-        // Check if this tile's cell is active
+        // All tiles are always rendered now
         const cellX = Math.floor(worldX / this.cellWidth);
         const cellY = Math.floor(worldY / this.cellHeight);
-        const cellActive = this.isCellActive(cellX, cellY);
         
-        // Only render non-empty tiles, and only if cell is active or tile is not default filled
-        if (tileValue !== 0) {
-            const isDefaultFilled = (tileValue === 1);
-            
-            // Don't render default filled tiles on inactive cells
-            if (isDefaultFilled && !cellActive) {
-                return; // Skip rendering this default filled tile
-            }
-            
-            switch (tileValue) {
-                case 1: // Blockout
-                    this.ctx.fillStyle = '#000000';
-                    break;
-                case 2: // Connection tile
-                    this.ctx.fillStyle = '#ffff00';
-                    break;
-                default:
-                    this.ctx.fillStyle = '#000000'; // Default to blockout color
-            }
-            
-            this.ctx.fillRect(pixelX, pixelY, this.tileSize, this.tileSize);
+        // Render tiles based on their state (all tiles always visible now)
+        switch (tileValue) {
+            case -1: // Transparent tile - checkered background
+                this.drawCheckeredTile(pixelX, pixelY);
+                break;
+            case 0: // Empty tile - white background
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.fillRect(pixelX, pixelY, this.tileSize, this.tileSize);
+                break;
+            case 1: // Filled tile - black background
+                this.ctx.fillStyle = '#000000';
+                this.ctx.fillRect(pixelX, pixelY, this.tileSize, this.tileSize);
+                break;
+            case 2: // Connection tile - yellow background
+                this.ctx.fillStyle = '#ffff00';
+                this.ctx.fillRect(pixelX, pixelY, this.tileSize, this.tileSize);
+                break;
         }
     }
     
@@ -556,8 +638,27 @@ class LevelEditor {
         this.renderTileAtWorld(x, y);
     }
     
+    drawCheckeredTile(pixelX, pixelY) {
+        // Draw checkered pattern for transparent tiles
+        const checkerSize = Math.max(4, this.tileSize / 4); // 4x4 checkers per tile, minimum 4px
+        const checksPerRow = Math.floor(this.tileSize / checkerSize);
+        
+        for (let row = 0; row < checksPerRow; row++) {
+            for (let col = 0; col < checksPerRow; col++) {
+                const checkX = pixelX + (col * checkerSize);
+                const checkY = pixelY + (row * checkerSize);
+                
+                // Alternate between the two customizable checker colors
+                const isEven = (row + col) % 2 === 0;
+                this.ctx.fillStyle = isEven ? this.checkerColor1 : this.checkerColor2;
+                
+                this.ctx.fillRect(checkX, checkY, checkerSize, checkerSize);
+            }
+        }
+    }
+    
     drawGrid() {
-        this.ctx.strokeStyle = '#999999';
+        this.ctx.strokeStyle = this.gridLineColor;
         this.ctx.lineWidth = 1 / this.zoom; // Adjust line width for zoom
         
         // Calculate visible area in world coordinates
@@ -626,7 +727,7 @@ class LevelEditor {
     clearGrid() {
         for (let y = 0; y < this.totalHeight; y++) {
             for (let x = 0; x < this.totalWidth; x++) {
-                this.tileData[y][x] = 0;
+                this.tileData[y][x] = -1; // Clear to transparent
             }
         }
         this.render();
@@ -641,9 +742,8 @@ class LevelEditor {
         document.querySelectorAll('.tool-button').forEach(btn => btn.classList.remove('active'));
         
         switch (mode) {
-            case 'blockout':
-                document.getElementById('blockoutMode').classList.add('active');
-                this.currentTileType = 1;
+            case 'paint':
+                document.getElementById('paintMode').classList.add('active');
                 this.canvas.style.cursor = 'crosshair';
                 document.getElementById('cellMenu').style.display = 'none';
                 break;
@@ -651,15 +751,14 @@ class LevelEditor {
                 document.getElementById('selectCellMode').classList.add('active');
                 this.canvas.style.cursor = 'pointer';
                 break;
+            case 'paste':
+                document.getElementById('pasteMode').classList.add('active');
+                this.canvas.style.cursor = 'crosshair';
+                document.getElementById('cellMenu').style.display = 'none';
+                break;
             case 'clone':
                 document.getElementById('cloneMode').classList.add('active');
                 this.canvas.style.cursor = 'copy';
-                break;
-            case 'cellOpening':
-                document.getElementById('cellOpeningTile').classList.add('active');
-                this.currentTileType = 2;
-                this.canvas.style.cursor = 'crosshair';
-                document.getElementById('cellMenu').style.display = 'none';
                 break;
         }
         
@@ -674,15 +773,26 @@ class LevelEditor {
         const cellX = Math.floor(tile.x / this.cellWidth);
         const cellY = Math.floor(tile.y / this.cellHeight);
         
-        // If in clone mode and we have a selected cell, clone to clicked location
-        if (this.isCloneMode && this.selectedCell && (this.selectedCell.x !== cellX || this.selectedCell.y !== cellY)) {
-            this.duplicateCell(this.selectedCell.x, this.selectedCell.y, cellX, cellY);
+        // Handle paste mode - paste copied pattern at clicked location
+        if (this.currentMode === 'paste') {
+            if (this.copiedPattern) {
+                this.pastePattern(cellX, cellY);
+                this.render();
+            } else {
+                console.log('No pattern copied to paste');
+            }
+            return;
+        }
+        
+        // If in clone mode and we have selections, handle cloning
+        if (this.isCloneMode && this.selectedCells.length > 0) {
+            // TODO: Implement multi-cell cloning
             this.render();
             return;
         }
         
-        // If clicking on already selected cell, start dragging
-        if (this.selectedCell && this.selectedCell.x === cellX && this.selectedCell.y === cellY) {
+        // Check if clicked on existing selection for dragging
+        if (this.selectedCells.length > 0 && this.isCellInSelection(cellX, cellY)) {
             this.isDraggingCell = true;
             this.dragStartCell = { x: cellX, y: cellY };
             this.canvas.style.cursor = 'grabbing';
@@ -692,21 +802,45 @@ class LevelEditor {
             return;
         }
         
-        // Otherwise, select the cell
-        this.selectedCell = { x: cellX, y: cellY };
+        // Start new rectangle selection
+        this.isSelecting = true;
+        this.selectionStart = { x: cellX, y: cellY };
+        this.selectionEnd = { x: cellX, y: cellY };
+        this.selectedCells = [{ x: cellX, y: cellY }];
+        
+        // Clear legacy single cell selection
+        this.selectedCell = null;
         
         // Update UI
-        document.getElementById('selectedCellX').textContent = cellX;
-        document.getElementById('selectedCellY').textContent = cellY;
+        document.getElementById('selectedCellX').textContent = `${cellX}`;
+        document.getElementById('selectedCellY').textContent = `${cellY}`;
         document.getElementById('cellMenu').style.display = 'block';
         
         this.render();
     }
     
     handleCellDrag(e) {
-        // Visual feedback during drag - could show preview here
-        this.canvas.style.cursor = 'grabbing';
-        // No need for hover detection - it's drawn on canvas
+        if (this.isSelecting) {
+            // Update rectangle selection during drag
+            const tile = this.getTileFromMouse(e);
+            if (!tile) return;
+            
+            const cellX = Math.floor(tile.x / this.cellWidth);
+            const cellY = Math.floor(tile.y / this.cellHeight);
+            
+            this.selectionEnd = { x: cellX, y: cellY };
+            this.updateSelectedCellsFromRectangle();
+            
+            // Update UI to show selection size
+            const selectionCount = this.selectedCells.length;
+            document.getElementById('selectedCellX').textContent = `${selectionCount} cells`;
+            document.getElementById('selectedCellY').textContent = 'selected';
+            
+            this.render();
+        } else if (this.isDraggingCell) {
+            // Visual feedback during drag - could show preview here
+            this.canvas.style.cursor = 'grabbing';
+        }
     }
     
     handleCellDrop(e) {
@@ -777,11 +911,11 @@ class LevelEditor {
         const endX = startX + this.cellWidth;
         const endY = startY + this.cellHeight;
         
-        // Reset cell to default state: completely filled
+        // Reset cell to default state: completely transparent
         for (let y = startY; y < endY; y++) {
             for (let x = startX; x < endX; x++) {
                 if (y < this.totalHeight && x < this.totalWidth) {
-                    this.tileData[y][x] = 1; // Fill entire cell
+                    this.tileData[y][x] = -1; // Reset to transparent
                 }
             }
         }
@@ -799,11 +933,11 @@ class LevelEditor {
         const endX = startX + this.cellWidth;
         const endY = startY + this.cellHeight;
         
-        // Fill entire cell (same as clear now since default is filled)
+        // Fill entire cell with solid tiles
         for (let y = startY; y < endY; y++) {
             for (let x = startX; x < endX; x++) {
                 if (y < this.totalHeight && x < this.totalWidth) {
-                    this.tileData[y][x] = 1;
+                    this.tileData[y][x] = 1; // Fill with solid black tiles
                 }
             }
         }
@@ -888,8 +1022,8 @@ class LevelEditor {
         for (let y = 0; y < this.cellHeight; y++) {
             cellData[y] = [];
             for (let x = 0; x < this.cellWidth; x++) {
-                // Create default cell: completely filled
-                cellData[y][x] = 1;
+                // Create default cell: completely transparent
+                cellData[y][x] = -1;
             }
         }
         return cellData;
@@ -932,28 +1066,26 @@ class LevelEditor {
     }
     
     updateCellActivity(cellX, cellY) {
-        // Check if cell has been modified from its default "all filled" state
+        // Check if cell has been modified from its default "all transparent" state
         const startX = cellX * this.cellWidth;
         const startY = cellY * this.cellHeight;
-        let hasEmptyTiles = false;
-        let hasConnectionTiles = false;
+        let hasModifiedTiles = false;
         
         for (let y = startY; y < startY + this.cellHeight && y < this.totalHeight; y++) {
             for (let x = startX; x < startX + this.cellWidth && x < this.totalWidth; x++) {
                 const tileValue = this.tileData[y][x];
                 
-                if (tileValue === 0) {
-                    hasEmptyTiles = true; // Found empty space (carved out)
-                } else if (tileValue === 2) {
-                    hasConnectionTiles = true; // Found connection tiles
+                // Any tile state other than the default "transparent" (-1) makes the cell active
+                if (tileValue !== -1) {
+                    hasModifiedTiles = true;
+                    break;
                 }
             }
+            if (hasModifiedTiles) break;
         }
         
         const cellKey = `${cellX},${cellY}`;
-        // Cell is active if it has been modified from the default "all filled" state
-        // This means it has empty tiles (carved space) OR connection tiles
-        if (hasEmptyTiles || hasConnectionTiles) {
+        if (hasModifiedTiles) {
             this.activeCells.add(cellKey);
         } else {
             this.activeCells.delete(cellKey);
@@ -962,6 +1094,142 @@ class LevelEditor {
     
     isCellActive(cellX, cellY) {
         return this.activeCells.has(`${cellX},${cellY}`);
+    }
+    
+    
+    updateSelectedCellsFromRectangle() {
+        // Update selectedCells array based on current selection rectangle
+        this.selectedCells = [];
+        
+        if (!this.selectionStart || !this.selectionEnd) return;
+        
+        const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
+        const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
+        const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
+        const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+        
+        for (let y = startY; y <= endY; y++) {
+            for (let x = startX; x <= endX; x++) {
+                if (x >= 0 && x < this.totalGridCols && y >= 0 && y < this.totalGridRows) {
+                    this.selectedCells.push({x, y});
+                }
+            }
+        }
+    }
+    
+    isCellInSelection(cellX, cellY) {
+        return this.selectedCells.some(cell => cell.x === cellX && cell.y === cellY);
+    }
+    
+    copySelectedCells() {
+        if (this.selectedCells.length === 0) {
+            console.log('No cells selected to copy');
+            return false;
+        }
+        
+        // Find bounding box of selection
+        let minX = this.totalGridCols, maxX = -1;
+        let minY = this.totalGridRows, maxY = -1;
+        
+        for (const cell of this.selectedCells) {
+            minX = Math.min(minX, cell.x);
+            maxX = Math.max(maxX, cell.x);
+            minY = Math.min(minY, cell.y);
+            maxY = Math.max(maxY, cell.y);
+        }
+        
+        const patternWidth = maxX - minX + 1;
+        const patternHeight = maxY - minY + 1;
+        
+        // Copy tile data from the selection area
+        const patternData = [];
+        for (let cellY = 0; cellY < patternHeight; cellY++) {
+            patternData[cellY] = [];
+            for (let cellX = 0; cellX < patternWidth; cellX++) {
+                const sourceCellX = minX + cellX;
+                const sourceCellY = minY + cellY;
+                
+                // Copy entire cell data (5x5 tiles)
+                const cellTiles = [];
+                for (let tileY = 0; tileY < this.cellHeight; tileY++) {
+                    cellTiles[tileY] = [];
+                    for (let tileX = 0; tileX < this.cellWidth; tileX++) {
+                        const worldTileX = sourceCellX * this.cellWidth + tileX;
+                        const worldTileY = sourceCellY * this.cellHeight + tileY;
+                        
+                        if (worldTileX < this.totalWidth && worldTileY < this.totalHeight) {
+                            cellTiles[tileY][tileX] = this.tileData[worldTileY][worldTileX];
+                        } else {
+                            cellTiles[tileY][tileX] = -1; // Transparent for out-of-bounds
+                        }
+                    }
+                }
+                patternData[cellY][cellX] = cellTiles;
+            }
+        }
+        
+        this.copiedPattern = {
+            data: patternData,
+            width: patternWidth,
+            height: patternHeight,
+            originalSelection: [...this.selectedCells] // Keep for reference
+        };
+        
+        console.log(`Copied ${patternWidth}x${patternHeight} cell pattern`);
+        return true;
+    }
+    
+    pastePattern(targetCellX, targetCellY) {
+        if (!this.copiedPattern) {
+            console.log('No pattern copied to paste');
+            return false;
+        }
+        
+        const pattern = this.copiedPattern;
+        const affectedCells = new Set();
+        
+        // Paste the pattern
+        for (let cellY = 0; cellY < pattern.height; cellY++) {
+            for (let cellX = 0; cellX < pattern.width; cellX++) {
+                const destCellX = targetCellX + cellX;
+                const destCellY = targetCellY + cellY;
+                
+                // Check bounds
+                if (destCellX >= 0 && destCellX < this.totalGridCols &&
+                    destCellY >= 0 && destCellY < this.totalGridRows) {
+                    
+                    const cellTiles = pattern.data[cellY][cellX];
+                    
+                    // Paste each tile in the cell
+                    for (let tileY = 0; tileY < this.cellHeight; tileY++) {
+                        for (let tileX = 0; tileX < this.cellWidth; tileX++) {
+                            const worldTileX = destCellX * this.cellWidth + tileX;
+                            const worldTileY = destCellY * this.cellHeight + tileY;
+                            
+                            if (worldTileX < this.totalWidth && worldTileY < this.totalHeight) {
+                                const tileValue = cellTiles[tileY][tileX];
+                                
+                                // Only paste non-transparent tiles
+                                if (tileValue !== -1) {
+                                    this.tileData[worldTileY][worldTileX] = tileValue;
+                                }
+                            }
+                        }
+                    }
+                    
+                    affectedCells.add(`${destCellX},${destCellY}`);
+                }
+            }
+        }
+        
+        // Update activity for all affected cells
+        for (const cellKey of affectedCells) {
+            const [cellX, cellY] = cellKey.split(',').map(Number);
+            this.updateCellActivity(cellX, cellY);
+        }
+        
+        console.log(`Pasted pattern at (${targetCellX}, ${targetCellY})`);
+        return true;
     }
     
     saveRoom() {
@@ -1117,6 +1385,183 @@ class LevelEditor {
         }
     }
     
+    clearOldCellLibrary() {
+        // Clear the old cell library since we changed from 8x5 to 5x5 cells
+        localStorage.removeItem('cellLibrary');
+        console.log('Cleared old cell library due to cell size change (8x5 → 5x5)');
+    }
+    
+    saveSettings() {
+        const settings = {
+            showBorders: this.showBorders,
+            borderColor: this.borderColor,
+            gridLineColor: this.gridLineColor,
+            checkerColor1: this.checkerColor1,
+            checkerColor2: this.checkerColor2,
+            autoOutline: this.autoOutline
+        };
+        localStorage.setItem('levelEditorSettings', JSON.stringify(settings));
+    }
+    
+    loadSettings() {
+        try {
+            const savedSettings = localStorage.getItem('levelEditorSettings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                
+                this.showBorders = settings.showBorders ?? true;
+                this.borderColor = settings.borderColor ?? '#4d9fff';
+                this.gridLineColor = settings.gridLineColor ?? '#999999';
+                this.checkerColor1 = settings.checkerColor1 ?? '#d0d0d0';
+                this.checkerColor2 = settings.checkerColor2 ?? '#e6f3ff';
+                this.autoOutline = settings.autoOutline ?? false;
+                
+                // Update UI controls
+                document.getElementById('showBorders').checked = this.showBorders;
+                document.getElementById('autoOutline').checked = this.autoOutline;
+                document.getElementById('borderColor').value = this.borderColor;
+                document.getElementById('gridLineColor').value = this.gridLineColor;
+                document.getElementById('checkerColor1').value = this.checkerColor1;
+                document.getElementById('checkerColor2').value = this.checkerColor2;
+                
+                // Update color swatches
+                this.updateColorSwatches();
+            }
+        } catch (error) {
+            console.error('Error loading settings:', error);
+        }
+    }
+    
+    setupTabs() {
+        const tabs = document.querySelectorAll('.tab');
+        const contents = document.querySelectorAll('.tab-content');
+        
+        tabs.forEach(tab => {
+            tab.addEventListener('click', (e) => {
+                // Remove active class from all tabs and contents
+                tabs.forEach(t => t.classList.remove('active'));
+                contents.forEach(c => c.classList.remove('active'));
+                
+                // Add active class to clicked tab
+                e.target.classList.add('active');
+                
+                // Show corresponding content
+                const tabId = e.target.id;
+                if (tabId === 'toolsTab') {
+                    document.getElementById('toolsContent').classList.add('active');
+                } else if (tabId === 'settingsTab') {
+                    document.getElementById('settingsContent').classList.add('active');
+                }
+            });
+        });
+    }
+    
+    setupColorSwatches() {
+        const swatches = [
+            { swatch: 'borderColorSwatch', input: 'borderColor' },
+            { swatch: 'gridLineColorSwatch', input: 'gridLineColor' },
+            { swatch: 'checkerColor1Swatch', input: 'checkerColor1' },
+            { swatch: 'checkerColor2Swatch', input: 'checkerColor2' }
+        ];
+        
+        swatches.forEach(({ swatch, input }) => {
+            document.getElementById(swatch).addEventListener('click', () => {
+                document.getElementById(input).click();
+            });
+        });
+    }
+    
+    updateColorSwatches() {
+        document.getElementById('borderColorSwatch').style.backgroundColor = this.borderColor;
+        document.getElementById('gridLineColorSwatch').style.backgroundColor = this.gridLineColor;
+        document.getElementById('checkerColor1Swatch').style.backgroundColor = this.checkerColor1;
+        document.getElementById('checkerColor2Swatch').style.backgroundColor = this.checkerColor2;
+    }
+    
+    resetSettingsToDefaults() {
+        // Reset to default values
+        this.showBorders = true;
+        this.borderColor = '#4d9fff';
+        this.gridLineColor = '#999999';
+        this.checkerColor1 = '#d0d0d0';
+        this.checkerColor2 = '#e6f3ff';
+        this.autoOutline = false;
+        
+        // Update UI controls
+        document.getElementById('showBorders').checked = this.showBorders;
+        document.getElementById('autoOutline').checked = this.autoOutline;
+        document.getElementById('borderColor').value = this.borderColor;
+        document.getElementById('gridLineColor').value = this.gridLineColor;
+        document.getElementById('checkerColor1').value = this.checkerColor1;
+        document.getElementById('checkerColor2').value = this.checkerColor2;
+        
+        // Update color swatches
+        this.updateColorSwatches();
+        
+        // Save and render
+        this.saveSettings();
+        this.render();
+        
+        console.log('Settings reset to defaults');
+    }
+    
+    
+    applyAutoOutline() {
+        const affectedCells = new Set();
+        const tilesToOutline = new Set();
+        
+        // Scan entire grid for -1 tiles adjacent to 0 tiles
+        for (let y = 0; y < this.totalHeight; y++) {
+            for (let x = 0; x < this.totalWidth; x++) {
+                if (this.tileData[y][x] === -1) { // Found transparent tile
+                    // Check 4-directional neighbors
+                    const neighbors = [
+                        [x, y - 1], // up
+                        [x, y + 1], // down
+                        [x - 1, y], // left
+                        [x + 1, y]  // right
+                    ];
+                    
+                    let hasEmptyNeighbor = false;
+                    for (const [nx, ny] of neighbors) {
+                        if (nx >= 0 && nx < this.totalWidth && ny >= 0 && ny < this.totalHeight) {
+                            if (this.tileData[ny][nx] === 0) { // Found empty neighbor
+                                hasEmptyNeighbor = true;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (hasEmptyNeighbor) {
+                        tilesToOutline.add(`${x},${y}`);
+                    }
+                }
+            }
+        }
+        
+        // Convert all marked tiles to filled (1) tiles
+        for (const tileKey of tilesToOutline) {
+            const [x, y] = tileKey.split(',').map(Number);
+            this.tileData[y][x] = 1; // Set to filled/black
+            
+            // Track affected cells
+            const cellX = Math.floor(x / this.cellWidth);
+            const cellY = Math.floor(y / this.cellHeight);
+            affectedCells.add(`${cellX},${cellY}`);
+        }
+        
+        // Update activity for all affected cells
+        for (const cellKey of affectedCells) {
+            const [cellX, cellY] = cellKey.split(',').map(Number);
+            this.updateCellActivity(cellX, cellY);
+        }
+        
+        if (tilesToOutline.size > 0) {
+            this.render();
+            console.log(`Auto-outline: ${tilesToOutline.size} transparent tiles converted to filled`);
+        }
+    }
+    
     drawSelectedCellHighlight() {
         if (!this.selectedCell) return;
         
@@ -1163,6 +1608,56 @@ class LevelEditor {
         this.ctx.lineTo(cellX + cellWidth, cellY + cellHeight);
         this.ctx.lineTo(cellX + cellWidth, cellY + cellHeight - markerSize);
         this.ctx.stroke();
+    }
+    
+    drawMultiCellSelectionHighlight() {
+        if (!this.selectedCells || this.selectedCells.length === 0) return;
+        
+        this.ctx.strokeStyle = '#FF9800';
+        this.ctx.fillStyle = 'rgba(255, 152, 0, 0.1)'; // Semi-transparent orange fill
+        this.ctx.lineWidth = 3 / this.zoom;
+        
+        // Draw highlight for each selected cell
+        for (const cell of this.selectedCells) {
+            const cellX = cell.x * this.cellWidth * this.tileSize;
+            const cellY = cell.y * this.cellHeight * this.tileSize;
+            const cellWidth = this.cellWidth * this.tileSize;
+            const cellHeight = this.cellHeight * this.tileSize;
+            
+            // Fill with semi-transparent color
+            this.ctx.fillRect(cellX, cellY, cellWidth, cellHeight);
+            
+            // Draw border
+            this.ctx.strokeRect(cellX, cellY, cellWidth, cellHeight);
+        }
+    }
+    
+    drawSelectionRectangle() {
+        if (!this.selectionStart || !this.selectionEnd) return;
+        
+        // Calculate rectangle bounds
+        const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
+        const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
+        const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
+        const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
+        
+        const rectX = startX * this.cellWidth * this.tileSize;
+        const rectY = startY * this.cellHeight * this.tileSize;
+        const rectWidth = (endX - startX + 1) * this.cellWidth * this.tileSize;
+        const rectHeight = (endY - startY + 1) * this.cellHeight * this.tileSize;
+        
+        // Draw selection rectangle
+        this.ctx.strokeStyle = '#2196F3';
+        this.ctx.fillStyle = 'rgba(33, 150, 243, 0.1)'; // Semi-transparent blue
+        this.ctx.lineWidth = 2 / this.zoom;
+        this.ctx.setLineDash([8 / this.zoom, 4 / this.zoom]);
+        
+        // Fill and stroke
+        this.ctx.fillRect(rectX, rectY, rectWidth, rectHeight);
+        this.ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
+        
+        // Reset line dash
+        this.ctx.setLineDash([]);
     }
     
     drawBrushPreview() {
@@ -1363,6 +1858,36 @@ class LevelEditor {
     }
     
     handleKeyDown(e) {
+        // Track shift key for eraser mode
+        if (e.key === 'Shift') {
+            this.isShiftPressed = true;
+            if (this.currentMode === 'paint') {
+                this.canvas.style.cursor = 'url("data:image/svg+xml,%3csvg width=\'16\' height=\'16\' xmlns=\'http://www.w3.org/2000/svg\'%3e%3cpath d=\'m2 2 12 12m0-12L2 14\' stroke=\'%23ff0000\' stroke-width=\'2\' fill=\'none\'/%3e%3c/svg%3e") 8 8, crosshair';
+            }
+        }
+        
+        // Handle copy/paste shortcuts
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+            switch(e.key.toLowerCase()) {
+                case 'c':
+                    e.preventDefault();
+                    if (this.selectedCells.length > 0) {
+                        this.copySelectedCells();
+                        this.showTemporaryMessage('Pattern copied!');
+                    }
+                    return;
+                case 'v':
+                    e.preventDefault();
+                    if (this.copiedPattern) {
+                        this.setMode('paste');
+                        this.showTemporaryMessage('Paste mode activated - click to place pattern');
+                    } else {
+                        this.showTemporaryMessage('No pattern copied to paste');
+                    }
+                    return;
+            }
+        }
+        
         const panSpeed = 50; // pixels per keypress
         
         switch(e.key) {
@@ -1402,6 +1927,16 @@ class LevelEditor {
                 this.render();
                 this.updateViewportInfo();
                 break;
+        }
+    }
+    
+    handleKeyUp(e) {
+        // Track shift key for eraser mode
+        if (e.key === 'Shift') {
+            this.isShiftPressed = false;
+            if (this.currentMode === 'paint') {
+                this.canvas.style.cursor = 'crosshair';
+            }
         }
     }
     

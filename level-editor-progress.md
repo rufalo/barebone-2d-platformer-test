@@ -1,221 +1,139 @@
 # Level Editor Progress Report
 
-## What We Were Working On
+## Current Status: Advanced Paint Mode & Selection System Redesign
 
-### Current Implementation: Room Blockout Mode
-We've been building a **hierarchical grid-based level editor** with a multi-scale approach. The current focus has been on the first layer of the system - what we call "Room Blockout Mode."
+### ✅ Recently Completed: Advanced Paint Mode System
 
-### System Architecture Built So Far
+#### **Paint Mode Enhancements**
+- **3-State Tile System**: 
+  - `-1` = Transparent tiles (checkered pattern - gray/light blue)
+  - `0` = Empty tiles (white background)  
+  - `1` = Filled tiles (black background)
+- **Multi-Input Drawing**:
+  - Left-click: Paint empty tiles (0)
+  - Right-click: Paint filled tiles (1) 
+  - **Shift + click: Eraser mode** - Sets tiles to transparent (-1)
+- **Visual Feedback**: Cursor changes to red X when Shift is held
+- **Auto-Outline Feature**: Automatically converts transparent tiles (-1) adjacent to empty tiles (0) into filled tiles (1)
 
-**Grid Hierarchy:**
-- **Room Grid**: 9x9 grid of cells (configurable)
-- **Cell Size**: 8x5 tiles per cell (160x160 pixels at 32px tiles)
-- **Drawing System**: Inverted from original plan - cells start filled, drawing creates empty space
-- **Tile Size**: 32x32 pixels
+#### **Interface Improvements**
+- **Tabbed Interface**: Clean separation between "Tools" and "Visual Settings"
+- **Color Customization**: Professional color swatches for grid lines, borders, and checker patterns
+- **Settings Persistence**: All visual preferences saved to localStorage
+- **Simplified Modes**: Removed complex toggle/setState modes, focused on intuitive Paint Mode
 
-### Key Features Implemented
+#### **Grid System Changes** 
+- **5x5 Cell Size**: Changed from 8x5 to 5x5 tiles per cell for better granularity
+- **All Cells Visible**: Removed complex visibility system - all cells always rendered
+- **Transparent Default**: All tiles start as transparent (-1) instead of filled (1)
 
-#### ✅ Core Drawing System
-- **Inverted Logic**: Cells start completely filled (all tiles = 1), drawing creates empty space (tiles = 0)
-- **Star Pattern Brushes**: 
-  - Size 1: 1 tile
-  - Size 2: 5 tiles (plus/star pattern)
-  - Size 3: 9 tiles (3x3 square)
-  - Size 4: 13 tiles (3x3 + extensions)
-  - Size 5: 25 tiles (5x5 square)
-- **Brush Preview**: Orange semi-transparent overlay showing affected tiles
-- **Brush Size Controls**: Slider + Ctrl+Scroll to adjust size (1-5)
+### 🔧 Current Focus: Selection System Redesign
 
-#### ✅ Cell Activity System
-- **Active Cells**: Show white background when modified from default state
-- **Inactive Cells**: Show light gray background when in default filled state
-- **Visual Hierarchy**: Only active cells show their content/borders
-- **Activity Detection**: Cells become active when they have empty tiles or connection tiles
+#### **Current Selection System Analysis**
+**What Works:**
+- Rectangle selection with visual feedback (orange highlighting)
+- Copy/paste with Ctrl+C/V shortcuts  
+- Pattern storage with transparency support
+- Basic cell dragging functionality
 
-#### ✅ Multi-Mode Interface
-- **Blockout Mode**: Primary drawing mode for creating empty spaces
-- **Room Connection Tile Mode**: Place yellow connection tiles on cell edges
-- **Select Cell Mode**: Select individual cells for manipulation
-- **Clone Mode**: Duplicate cell content
+**Major Issues Identified:**
+- Multi-cell dragging acts like single cell
+- Copy/paste system too rigid for dynamic workflows
+- Mixed legacy single-cell vs new multi-cell systems
+- Incomplete clone/stamp functionality
 
-#### ✅ Cell Management System
-- **Cell Selection**: Orange highlighted cell with corner markers
-- **Cell Operations**: Clear cell, fill cell
-- **Cell Dragging**: Move/swap cells within the grid
-- **Swap Mode Toggle**: Choose between moving or swapping when dragging cells
+#### **Comprehensive Redesign Plan**
 
-#### ✅ Visual System
-- **Zoom & Pan**: Mouse wheel zoom, middle-click pan, WASD/arrow key pan
-- **Grid Lines**: Darker tile grid lines (#999999) visible on both active/inactive cells
-- **Cell Borders**: Lighter blue borders (#4d9fff) around cells
-- **Color Scheme**: 
-  - Active cells: White background (#ffffff)
-  - Inactive cells: Light gray background (#e8e8e8)
-  - Grid lines: Dark gray (#999999)
-  - Cell borders: Light blue (#4d9fff)
+### 🎯 **Vision: Professional-Grade Selection System**
 
-#### ✅ Cell Library System (Just Completed!)
-- **Visual Shelf**: Horizontal shelf below canvas showing saved cell thumbnails
-- **Drag-to-Save**: Drag selected cells to canvas drop zone to save them
-- **Canvas Drop Zone**: Green drop area rendered ON the canvas (not HTML overlay)
-- **Drag-to-Load**: Drag thumbnails from shelf to canvas to place cells
-- **Cell Previews**: Mini canvas thumbnails showing cell content
-- **Auto-Generated Names**: Timestamp-based naming (cell-2025-01-15-14-30-25)
-- **Delete Functionality**: Red × button on hover to remove cells
-- **localStorage Persistence**: Saved cells survive browser refresh
+Transform from basic cell editor to professional level design tool with:
 
-#### ✅ Room Library System
-- **Save/Load Rooms**: Save entire room state with all cells
-- **JSON Storage**: Complete room data with metadata
-- **Auto-Generated Names**: Timestamp-based room names
+#### **Phase 1: Core Selection & Movement** 🏗️
+- **Multi-Cell Dragging**: Fix dragging to work with full selections
+- **Smart Movement**: Drag/nudge selections with conflict resolution
+- **Arrow Key Nudging**: Move selections with keyboard
+- **Conflict Resolution Modes**: 
+  - Swap: Exchange content with destination
+  - Push: Move existing content out of the way
+  - Overwrite: Replace destination content
+- **Non-Destructive Preview**: See changes before committing
 
-### Technical Architecture
+#### **Phase 2: Transform & Stamp System** 🔄
+- **Stamp/Pattern Mode**: Replace copy/paste with intuitive stamping
+- **Transform Tools**: Flip horizontal/vertical, rotate selections
+- **Pattern Placement**: Easy placement of copied patterns
+- **Preview System**: Show pattern placement before confirming
 
-#### Canvas Rendering System
-- **Fixed Canvas Size**: 800x600 pixels (configurable in HTML)
-- **World Coordinates**: Proper viewport transformations for zoom/pan
-- **Layered Rendering**: Cell backgrounds → tiles → grid lines → borders → previews → drop zones
-- **Efficient Rendering**: Only renders visible tiles and cells
+#### **Phase 3: Advanced Grid System** 📐
+- **Off-Grid Movement**: Move selections not aligned to cell boundaries
+- **Adjustable Working Grid**: Secondary grid with custom size/offset
+- **Grid Alignment Options**: Snap to main grid or working grid
+- **Flexible Positioning**: Professional-level placement control
 
-#### Data Structure
-```javascript
-// Core tile data: 2D array where 1 = filled, 0 = empty, 2 = connection
-this.tileData[y][x] = tileValue;
+#### **Phase 4: Pattern Library Redesign** 📚
+- **Rename to "Pattern Library"**: Better reflects dynamic nature
+- **Dynamic Pattern Sizes**: Support arbitrary rectangular patterns
+- **Dual Cell Concepts**: 
+  - Fixed 5x5 cells for room editing mode
+  - Dynamic patterns for flexible shape storage
+- **Improved Organization**: Categories, search, better management
 
-// Active cell tracking
-this.activeCells = new Set(); // Contains "x,y" strings
+### **Technical Architecture**
 
-// Cell library storage (localStorage)
-{
-  "cell-2025-01-15-14-30-25": {
-    name: "cell-2025-01-15-14-30-25",
-    timestamp: "2025-01-15T14:30:25.000Z",
-    cellSize: { width: 8, height: 5 },
-    data: [[1,1,0,0,1], [1,0,0,0,1], ...], // 2D array
-    isActive: true,
-    version: "1.0"
-  }
-}
-```
+#### **Selection System Components**
+- **Multi-Cell Selection**: Rectangle selection with proper multi-cell handling
+- **Preview Layer**: Non-destructive overlay for showing potential changes
+- **Transform Engine**: Handle flip/rotate operations on tile data
+- **Conflict Resolution**: Smart handling of overlapping placements
+- **Pattern Storage**: Enhanced system for dynamic pattern sizes
 
-#### Coordinate Systems
-- **Canvas Coordinates**: Mouse position on HTML canvas
-- **World Coordinates**: Transformed coordinates accounting for zoom/pan
-- **Tile Coordinates**: Individual tile positions in the grid
-- **Cell Coordinates**: Which cell (0-8, 0-8) in the room grid
+#### **Grid System Enhancements**
+- **Primary Grid**: Current 5x5 cell system for room structure  
+- **Working Grid**: Adjustable overlay grid for flexible placement
+- **Coordinate Systems**: Proper handling of multiple grid alignments
+- **Visual Indicators**: Clear feedback for grid modes and alignments
 
-### User Workflow Achieved
-1. **Drawing**: Use blockout mode to carve empty spaces in filled cells
-2. **Connections**: Place yellow connection tiles on cell edges
-3. **Cell Management**: Select, move, swap, clear, or fill individual cells
-4. **Saving**: Select cell → drag to green drop zone → appears in shelf
-5. **Loading**: Drag thumbnail from shelf → drop on canvas → cell placed
-6. **Room Management**: Save entire room state, load saved rooms
+### **Development Priority**
 
-## What's Next
+#### **Immediate Next Steps**
+1. **Fix Multi-Cell Dragging**: Make selections drag as unified groups
+2. **Add Preview Layer**: Non-destructive movement preview system
+3. **Implement Arrow Key Nudging**: Keyboard-based selection movement
+4. **Add Conflict Resolution**: Choose how overlapping placements work
 
-### Immediate Next Steps
+#### **Current Implementation Status**
+- **Paint Mode**: ✅ Complete and polished
+- **Basic Selection**: ✅ Working but needs major enhancements  
+- **Auto-Outline**: ✅ Complete and integrated
+- **Visual Settings**: ✅ Professional tabbed interface complete
+- **Pattern System**: 🔧 Needs complete redesign
 
-#### 1. Polish Current Cell Library
-- **Better Naming System**: Allow custom names for saved cells instead of just timestamps
-- **Cell Categories**: Organize cells by type (platforms, vertical shafts, etc.)
-- **Search/Filter**: Find cells in large libraries
-- **Bulk Operations**: Delete multiple cells, export/import cell packs
+### **Design Philosophy Evolution**
 
-#### 2. Room Library Enhancement  
-- **Visual Room Previews**: Show thumbnail of entire room in room library
-- **Room Metadata**: Add room descriptions, difficulty tags, themes
-- **Room Templates**: Create starter room templates
+#### **From Simple to Professional**
+The editor is evolving from a basic cell-based tool into a comprehensive level design system that rivals professional tools while maintaining ease of use.
 
-#### 3. Connection System
-- **Smart Connections**: Detect and highlight how cells connect
-- **Connection Validation**: Warn when cells don't connect properly
-- **Auto-Connection**: Tools to ensure seamless cell transitions
+#### **Key Principles**
+- **Non-Destructive Workflow**: Preview changes before committing
+- **Flexible Grid Systems**: Work within structure or break free when needed  
+- **Intuitive Controls**: Professional power with approachable interface
+- **Dynamic Patterns**: Move beyond fixed cell sizes to flexible shapes
+- **Smart Automation**: Auto-outline and smart conflict resolution
 
-### Medium-Term Goals
+### **Technical Foundation Status**
 
-#### 4. Detailed Room Editor (Next Major Phase)
-Based on the nextsteps.md file, the plan is to build a **second layer** of editing:
+#### **Solid Base Established** ✅
+- Canvas rendering system handles complex operations efficiently
+- 3-state tile system provides full flexibility (-1, 0, 1)  
+- Event handling supports complex multi-tool workflows
+- Settings and persistence systems are robust
+- Visual feedback systems provide clear user guidance
 
-- **16x10 Resolution**: Each cell becomes a 16x10 tile detailed editor
-- **Seamless Zoom**: Click cell in Room Blockout Mode → zoom into detailed editor
-- **Tile-Level Detail**: Fine-tune individual tiles within each cell
-- **Dual-Scale Workflow**: Rough blockout → detailed refinement
-
-#### 5. World Editor (Final Layer)
-- **Multi-Room System**: Place saved rooms in larger world grid
-- **World Map**: Visual overview of connected rooms
-- **World Testing**: Play through entire worlds seamlessly
-- **World Export**: Generate game-ready level data
-
-### Technical Debt & Improvements
-
-#### Code Organization
-- **Modular Architecture**: Split large LevelEditor class into smaller components
-- **Separate Concerns**: Move cell library, room library, and rendering into separate classes
-- **Event System**: Implement proper event dispatching for UI updates
-
-#### Performance
-- **Viewport Culling**: Only process visible tiles/cells (partially implemented)
-- **Efficient Rendering**: Cache cell thumbnails, reduce redraw frequency
-- **Memory Management**: Clean up unused canvas contexts and data
-
-#### User Experience
-- **Keyboard Shortcuts**: Add hotkeys for common operations
-- **Context Menus**: Right-click menus for cell operations
-- **Tool Palette**: Better organization of drawing tools
-- **Status Display**: Show current tool, brush size, selected cell info
-
-### Long-Term Vision
-
-Based on the original nextsteps.md plan, the ultimate goal is a **three-layer hierarchical editor**:
-
-1. **World Editor**: Place rooms in world grid
-2. **Room Blockout Mode**: Current system - design room layout with cells
-3. **Detailed Room Editor**: Fine-tune individual tiles within cells
-
-This system enables:
-- **Rapid Prototyping**: Block out levels quickly at room level
-- **Detailed Refinement**: Polish individual areas at tile level  
-- **Modular Design**: Reuse proven room components across worlds
-- **Scale Testing**: Easy to experiment with different room/cell proportions
-
-## Current Status Assessment
-
-### What's Working Well ✅
-- **Solid Foundation**: Core canvas rendering and interaction system is robust
-- **Intuitive Interface**: Drawing feels natural with good visual feedback
-- **Flexible System**: Easy to adjust cell sizes, brush patterns, colors
-- **Data Management**: Library system works smoothly with drag-and-drop
-- **Performance**: Handles zoom/pan smoothly even with large grids
-
-### Areas for Improvement 🔧
-- **Code Organization**: Large monolithic class needs refactoring
-- **User Feedback**: Need better visual indicators for actions/states
-- **Error Handling**: More graceful handling of edge cases
-- **Mobile Support**: Touch interaction could be improved
-- **Documentation**: Need user guide for complex workflow
-
-### Ready for Next Phase 🚀
-The Room Blockout Mode system is **feature-complete** and ready for the next major development phase. The foundation is solid enough to build the Detailed Room Editor on top of it.
-
-## Development Approach Learned
-
-### What Worked
-- **Incremental Development**: Building one feature at a time
-- **User-Centric Design**: Focusing on actual drawing workflow
-- **Visual Feedback**: Immediate preview of changes
-- **Flexible Architecture**: Easy to adjust parameters and experiment
-
-### What to Remember
-- **Start Simple**: Begin with basic functionality, add complexity gradually
-- **Test Early**: Get drawing workflow working before adding advanced features
-- **Visual Clarity**: Clear visual hierarchy is crucial for multi-scale editing
-- **Data Structure**: Simple 2D arrays work well for this type of system
+#### **Ready for Advanced Features** 🚀
+The current foundation is solid enough to support the comprehensive selection system redesign. The paint mode provides a stable base while we build the advanced selection and pattern tools.
 
 ---
 
-**Current State**: Room Blockout Mode is complete and functional
-**Next Priority**: Begin Detailed Room Editor implementation  
-**Timeline**: Ready to start next major phase
-**Risk Level**: Low - solid foundation established
+**Current Priority**: Begin Phase 1 - Fix multi-cell dragging and add preview layer
+**Status**: Ready to implement - solid foundation established
+**Risk Level**: Low - core systems are stable and well-tested
