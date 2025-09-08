@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>State Machine Character Controller Test</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #2c3e50;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        canvas {
+            border: 2px solid #34495e;
+            border-radius: 8px;
+        }
+        .info {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            max-width: 800px;
+        }
+        .controls {
+            background: #27ae60;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .features {
+            background: #8e44ad;
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <h1>State Machine Character Controller Test</h1>
+        
+        <div class="info">
+            <div class="controls">
+                <h3>🎮 Controls</h3>
+                <p><strong>Movement:</strong> Arrow Keys</p>
+                <p><strong>Jump:</strong> Spacebar</p>
+                <p><strong>Boost/Charge:</strong> Shift (hold for charge)</p>
+                <p><strong>Ground Slide:</strong> Boost + Direction + Down</p>
+            </div>
+            
+            <div class="features">
+                <h3>✨ Features</h3>
+                <ul>
+                    <li><strong>Data-driven:</strong> All abilities configurable in playerConfig.js</li>
+                    <li><strong>State machines:</strong> Clean separation of state logic</li>
+                    <li><strong>Modifiers system:</strong> Easy upgrades and buffs</li>
+                    <li><strong>Input buffering:</strong> Jump buffer for responsive controls</li>
+                    <li><strong>Visual feedback:</strong> Color changes show current state</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Phaser.js -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    
+    <!-- State Machine System -->
+    <script type="module">
+        import { PlayerModel } from './js/playerModel.js';
+        import { PlayerController } from './js/playerController.js';
+        import { PlayerConfig } from './js/playerConfig.js';
+
+        class GameScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'GameScene' });
+            }
+
+            preload() {
+                // Create simple colored rectangles as textures
+                this.add.graphics({ fillStyle: { color: 0x8B4513 } })
+                    .fillRect(0, 0, 32, 32)
+                    .generateTexture('platform', 32, 32);
+                    
+                // White player texture so tints show as pure colors
+                this.add.graphics({ fillStyle: { color: 0xffffff } })
+                    .fillRect(0, 0, 32, 64)
+                    .generateTexture('player', 32, 64);
+            }
+
+            create() {
+                // Create platforms
+                this.platforms = this.physics.add.staticGroup();
+                
+                // Ground
+                const ground = this.platforms.create(400, 550, 'platform');
+                ground.setScale(25, 3).refreshBody(); // 800x96 ground
+                
+                // Platforms
+                this.platforms.create(200, 400, 'platform').setScale(6, 1).refreshBody();
+                this.platforms.create(600, 300, 'platform').setScale(6, 1).refreshBody();
+
+                // Create player
+                this.player = this.physics.add.sprite(100, 450, 'player');
+                this.player.setOrigin(0.5, 1); // Set origin to bottom center
+                this.player.setTint(PlayerConfig.abilities.colors.normal);
+                this.player.setCollideWorldBounds(true);
+                this.player.setBounce(PlayerConfig.abilities.physics.bounce);
+                this.physics.add.collider(this.player, this.platforms);
+
+                // Set up physics
+                this.physics.world.gravity.y = PlayerConfig.abilities.physics.gravityY;
+
+                // Initialize state machine system
+                this.model = new PlayerModel(this.player);
+                this.controller = new PlayerController(this, this.model);
+
+                // Input setup
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+                // Debug display
+                this.debugText = this.add.text(16, 16, '', {
+                    fontSize: '16px',
+                    fill: '#ffffff',
+                    backgroundColor: '#000000',
+                    padding: { x: 10, y: 5 }
+                });
+
+                // Add some example modifiers to demonstrate the system
+                this._setupExampleModifiers();
+            }
+
+            update(time, delta) {
+                // Map inputs to controller
+                this.controller.setAxis(
+                    this.cursors.left.isDown,
+                    this.cursors.right.isDown,
+                    this.cursors.up.isDown,
+                    this.cursors.down.isDown
+                );
+
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+                    this.controller.pressJump();
+                }
+                if (Phaser.Input.Keyboard.JustUp(this.spaceKey)) {
+                    this.controller.releaseJump();
+                }
+                if (Phaser.Input.Keyboard.JustDown(this.shiftKey)) {
+                    this.controller.pressBoost();
+                }
+                if (Phaser.Input.Keyboard.JustUp(this.shiftKey)) {
+                    this.controller.releaseBoost();
+                }
+
+                // Update controller
+                this.controller.update(delta);
+
+                // Update debug display
+                this._updateDebugText();
+
+                // Clear input flags
+                this.controller.endFrame();
+            }
+
+            _setupExampleModifiers() {
+                // Example: Add a speed boost modifier (uncomment to test)
+                // this.model.mods.add({
+                //     key: "move.speed",
+                //     op: "mul",
+                //     value: 1.5,
+                //     enabled: true
+                // });
+
+                // Example: Disable sliding ability (uncomment to test)
+                // this.model.cfg.featureFlags.canSlide = false;
+            }
+
+            _updateDebugText() {
+                const speedMultiplier = this.model.getCurrentSpeedMultiplier();
+                const chargePercent = this.model.getChargePercentage();
+                
+                this.debugText.setText([
+                    '=== STATE MACHINE CHARACTER CONTROLLER ===',
+                    '',
+                    `Movement: ${this.model.movement.state}`,
+                    `Action: ${this.model.action.state}`,
+                    `Boost: ${this.model.boost.state} (${Math.ceil(this.model.boostActive.remaining)}ms)`,
+                    `Charge: ${this.model.charge.state} (${chargePercent}%)`,
+                    '',
+                    `Speed: ${speedMultiplier.toFixed(1)}x`,
+                    `Position: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`,
+                    `Velocity: (${Math.round(this.player.body.velocity.x)}, ${Math.round(this.player.body.velocity.y)})`,
+                    '',
+                    '=== FEATURES ===',
+                    `Boost: ${this.model.canBoost ? '✓' : '✗'}`,
+                    `Charge: ${this.model.canCharge ? '✓' : '✗'}`,
+                    `Slide: ${this.model.canSlide ? '✓' : '✗'}`,
+                    `Boost Jump: ${this.model.canBoostJump ? '✓' : '✗'}`,
+                    `Charge Jump: ${this.model.canChargeJump ? '✓' : '✗'}`
+                ]);
+            }
+        }
+
+        // Game configuration
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: PlayerConfig.abilities.physics.gravityY },
+                    debug: false
+                }
+            },
+            scene: GameScene
+        };
+
+        // Start the game
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>

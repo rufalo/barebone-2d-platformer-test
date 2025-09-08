@@ -102,6 +102,31 @@
         .status.dash-ready {
             background: #f39c12;
         }
+        
+        .debug-checklist {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .checklist-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: #bdc3c7;
+        }
+        
+        .checkmark {
+            font-size: 16px;
+            font-weight: bold;
+            min-width: 20px;
+            text-align: center;
+        }
+        
+        .checkmark.checked {
+            color: #27ae60;
+        }
     </style>
 </head>
 <body>
@@ -119,9 +144,9 @@
                     <strong>Controls:</strong><br>
                     WASD/Arrows - Move<br>
                     Space - Jump<br>
-                    Shift - Boost (prepare for enhanced actions)<br>
-                    Shift (while boosted) - Dash<br>
-                    Shift + Down (while boosted) - Ground Slide
+                    Shift - Boost (speed boost + enhanced actions)<br>
+                    Hold Shift - Charge Boost (slow + charge jump)<br>
+                    Boost + Direction + Down - Ground Slide
                 </div>
                 
                 <div class="control-group">
@@ -129,6 +154,48 @@
                     <div class="status" id="boostStatus">Boost: Ready</div>
                     <div class="status" id="dashStatus">Dash: Ready</div>
                     <div class="status" id="groundStatus">Ground: Unknown</div>
+                </div>
+                
+                <div class="control-group">
+                    <h3>Debug Checklist</h3>
+                    <div class="debug-checklist">
+                        <div class="checklist-item">
+                            <span class="checkmark" id="check-boost">☐</span>
+                            <span>Boost Mode Active</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span class="checkmark" id="check-charge-boost">☐</span>
+                            <span>Charge Boost Mode</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span class="checkmark" id="check-boost-jumping">☐</span>
+                            <span>Boost Jumping</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span class="checkmark" id="check-charge-jumping">☐</span>
+                            <span>Charge Jumping</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span class="checkmark" id="check-dash">☐</span>
+                            <span>Dashing</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span class="checkmark" id="check-ground-slide">☐</span>
+                            <span>Ground Sliding</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span>Boost Timer: <span id="boost-timer-value">0</span>ms</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span>Charge Level: <span id="charge-level-value">0</span>%</span>
+                        </div>
+                        <div class="checklist-item">
+                            <span>Boost Chains: <span id="boost-chains-value">0</span>/<span id="max-boost-chains-value">2</span></span>
+                        </div>
+                        <div class="checklist-item">
+                            <span>Horizontal Velocity: <span id="horizontal-velocity">0</span></span>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="control-group">
@@ -160,7 +227,7 @@
                 this.scene = scene;
                 this.sprite = scene.physics.add.sprite(x, y, 'player');
                 this.sprite.setCollideWorldBounds(true);
-                this.sprite.setBounce(0.1);
+                this.sprite.setBounce(0); // No bounce to prevent visual jiggle
                 
                 // Core properties
                 this.facingRight = true;
@@ -169,8 +236,19 @@
                 
                 // Boost system
                 this.isBoosted = false;
+                this.isChargeBoosting = false; // Charge boost state
                 this.boostTimer = 0;
-                this.boostDuration = 500; // 500ms boost window
+                this.boostDuration = 400; // 400ms boost window
+                this.boostChains = 0; // Track how many boost actions used
+                this.maxBoostChains = 2; // Allow boost -> dash -> boost jump
+                this.boostVelocityMultiplier = 1.5; // Speed boost when boosted
+                this.initialBoostApplied = false; // Track if initial boost was applied
+                
+                // Charge boost system
+                this.chargeLevel = 0; // 0-100 charge level
+                this.maxChargeLevel = 100; // Maximum charge level
+                this.chargeRate = 100 / 1500; // Charge per ms (100 charge in 1500ms)
+                this.chargeBoostSpeedMultiplier = 0.8; // Slower movement during charge boost
                 
                 // Dash system
                 this.isDashing = false;
@@ -179,21 +257,40 @@
                 this.canDash = true;
                 this.lastDashTime = 0;
                 this.dashCooldown = 800; // 800ms cooldown
+                this.dashCoyoteTimer = 0;
+                this.dashCoyoteDuration = 150; // 150ms grace period after dash ends
                 
                 // Visual feedback system
                 this.showingJumpEffect = false;
                 this.isBoostJumping = false;
+                this.isChargeJumping = false;
                 
                 // Store current color for texture updates
                 this.currentColor = 0x4A90E2; // Default blue
                 
+                // Force visualization system
+                this.forceBlock = null;
+                this.forceHistory = [];
+                this.maxForceHistory = 10;
+                this.lastCollisionForce = { x: 0, y: 0 };
+                this.impactTimer = 0;
+                this.impactDuration = 300; // 300ms impact visualization
+                
                 // Movement properties
                 this.walkSpeed = 140;
                 this.jumpVelocity = 450;
-                this.dashSpeed = 600;
-                this.boostedDashSpeed = 800;
-                this.boostedJumpVelocity = 400; // Less vertical force
-                this.boostedJumpHorizontal = 200; // Additional horizontal force
+                this.dashSpeed = 450;
+                this.boostedDashSpeed = 600;
+                this.boostedJumpVelocity = 600; // Boosted jump - more vertical force than normal jump
+                this.boostedJumpHorizontal = 200; // Good horizontal movement for boosted jump
+                this.chargeJumpBaseVelocity = 500; // Base charge jump velocity
+                this.chargeJumpMultiplier = 2.0; // Multiplier for charge level (500 + chargeLevel * 2)
+                
+                // Long jump (secondary boost) tuning
+                this.longJumpMaxSpeed = 900; // Cap for x during long jump
+                this.longJumpLockDuration = 160; // ms to preserve forward speed after takeoff
+                this.longJumpAccel = 2500; // Gentle push to keep momentum during lock
+                this.longJumpLockTimer = 0; // Timer for momentum preservation
                 
                 // Input setup
                 this.cursors = scene.input.keyboard.createCursorKeys();
@@ -202,7 +299,27 @@
                 // Prevent game controls from affecting UI
                 this.setupUIProtection();
                 
-                // Setup ground detection
+                // Initialize force visualization
+                this.initializeForceVisualization();
+                
+                // Setup ground detection and size system
+                this.normalScaleX = 1.0; // Normal width
+                this.normalScaleY = 2.0; // Double height
+                this.slideScaleX = 1.0; // Normal width during slide
+                this.slideScaleY = 1.0; // Normal height during slide
+                this.currentScaleX = this.normalScaleX;
+                this.currentScaleY = this.normalScaleY;
+                this.targetScaleX = this.normalScaleX;
+                this.targetScaleY = this.normalScaleY;
+                this.sizeTransitionSpeed = 0.35; // Faster grow-back
+                this.slideTransitionSpeed = 0.5; // Much faster transition for sliding
+                this.slideShrinkTimer = 0; // Timer for staying shrunk after slide
+                this.slideShrinkDuration = 200; // Stay shrunk for 200ms after slide ends
+                this.isInSlideMode = false; // Track if player is in continuous slide mode
+                this.slideModeVelocity = 150; // Constant velocity when in slide mode
+                
+                this.sprite.setScale(this.normalScaleX, this.normalScaleY);
+                this.sprite.setOrigin(0.5, 1.0); // Scale from bottom center instead of center
                 this.sprite.body.setSize(28, 32);
                 this.sprite.body.setOffset(2, 0);
             }
@@ -219,8 +336,26 @@
                 // Handle input
                 this.handleInput();
                 
+                // Safety check: reset jump states if character is clearly not jumping
+                if (this.isGrounded && Math.abs(this.sprite.body.velocity.y) < 10) {
+                    if (this.isBoostJumping || this.isChargeJumping) {
+                        console.log("Safety reset: clearing jump states - isGrounded:", this.isGrounded, "velocity.y:", this.sprite.body.velocity.y);
+                    }
+                    this.isBoostJumping = false;
+                    this.isChargeJumping = false;
+                }
+                
                 // Update visual feedback
                 this.updateVisuals();
+                
+                // Update force visualization
+                this.updateForceVisualization();
+                
+                // Update size transitions
+                this.updateSizeTransition();
+                
+                // Check for slide mode
+                this.checkSlideMode();
                 
                 // Update debug display
                 this.updateDebugDisplay();
@@ -231,8 +366,30 @@
                 if (this.isBoosted) {
                     this.boostTimer -= delta;
                     if (this.boostTimer <= 0) {
-                        this.isBoosted = false;
+                        console.log("Boost timer expired! Shift held:", this.keys.SHIFT.isDown, "Already charge boosting:", this.isChargeBoosting);
+                        // Check if boost key is still held for charge boost transition
+                        const boostHeld = this.keys.SHIFT.isDown;
+                        if (boostHeld && !this.isChargeBoosting) {
+                            console.log("Transitioning to charge boost mode!");
+                            this.isChargeBoosting = true;
+                            this.isBoosted = false; // Exit boost mode
+                            this.chargeLevel = 0;
+                            this.boostChains = 0;
+                            this.initialBoostApplied = false;
+                            this.updatePlayerColor(0xff8800); // Orange for charge boost
+                        } else {
+                            console.log("Not transitioning to charge boost - Shift held:", boostHeld, "Already charge boosting:", this.isChargeBoosting);
+                            this.isBoosted = false;
+                            this.boostChains = 0;
+                            this.initialBoostApplied = false;
+                        }
                     }
+                }
+                
+                // Charge boost timer
+                if (this.isChargeBoosting) {
+                    // Build up charge
+                    this.chargeLevel = Math.min(this.maxChargeLevel, this.chargeLevel + (this.chargeRate * delta));
                 }
                 
                 // Dash timer
@@ -240,13 +397,40 @@
                     this.dashTimer -= delta;
                     if (this.dashTimer <= 0) {
                         this.isDashing = false;
+                        this.dashCoyoteTimer = this.dashCoyoteDuration; // Start coyote timer
+                        
+                        // If not in slide mode, start slide shrink timer
+                        if (!this.isInSlideMode) {
+                            this.slideShrinkTimer = this.slideShrinkDuration;
+                        }
                     }
+                }
+                
+                // Dash coyote timer
+                if (this.dashCoyoteTimer > 0) {
+                    this.dashCoyoteTimer -= delta;
                 }
                 
                 // Dash cooldown
                 if (!this.canDash && this.scene.time.now - this.lastDashTime >= this.dashCooldown) {
                     this.canDash = true;
                 }
+                
+                // Impact timer
+                if (this.impactTimer > 0) {
+                    this.impactTimer -= delta;
+                }
+                
+                // Slide shrink timer
+                if (this.slideShrinkTimer > 0) {
+                    this.slideShrinkTimer -= delta;
+                    if (this.slideShrinkTimer <= 0) {
+                        this.setTargetSize(this.normalScaleX, this.normalScaleY);
+                        this.applyBodySize('normal');
+                    }
+                }
+                
+                // Long jump lock timer removed - no longer needed
             }
             
             checkGrounded() {
@@ -255,6 +439,20 @@
                 if (this.isGrounded) {
                     this.canDoubleJump = true;
                     this.isBoostJumping = false; // Reset boost jumping when landing
+                    this.isChargeJumping = false; // Reset charge jumping when landing
+                    this.boostChains = 0; // Reset boost chains when landing
+                    this.dashCoyoteTimer = 0; // Reset dash coyote timer when landing
+                    this.initialBoostApplied = false; // Reset initial boost flag when landing
+                    this.slideShrinkTimer = 0; // Reset slide shrink timer when landing
+                    this.isInSlideMode = false; // Reset slide mode when landing
+                    this.isChargeBoosting = false; // Reset charge boost when landing
+                    this.chargeLevel = 0; // Reset charge level when landing
+                    
+                    // IMPORTANT: only return to normal size if not sliding and not lingering
+                    if (!this.isDashing && !this.isInSlideMode && this.slideShrinkTimer <= 0) {
+                        this.setTargetSize(this.normalScaleX, this.normalScaleY);
+                        this.applyBodySize('normal');
+                    }
                 }
             }
             
@@ -272,11 +470,11 @@
                     return;
                 }
                 
+                // Handle jumping first (so it can set velocity without being overridden)
+                this.handleJumping();
+                
                 // Handle horizontal movement
                 this.handleHorizontalMovement();
-                
-                // Handle jumping
-                this.handleJumping();
             }
             
             isUIFocused() {
@@ -293,24 +491,43 @@
             
             handleBoost() {
                 const boostPressed = Phaser.Input.Keyboard.JustDown(this.keys.SHIFT);
+                const boostHeld = this.keys.SHIFT.isDown;
                 const downPressed = this.cursors.down.isDown || this.keys.S.isDown;
+                const leftPressed = this.cursors.left.isDown || this.keys.A.isDown;
+                const rightPressed = this.cursors.right.isDown || this.keys.D.isDown;
                 
                 if (boostPressed) {
-                    if (this.isBoosted) {
-                        // Already boosted - activate dash!
-                        if (downPressed && this.isGrounded) {
-                            this.performGroundSlide();
-                        } else {
-                            this.performDash();
-                        }
-                    } else {
-                        // Not boosted - start boost
-                        this.isBoosted = true;
-                        this.boostTimer = this.boostDuration;
-                        
-                        // Visual feedback
-                        this.updatePlayerColor(0x00ff00); // Green for boost
+                    // Start boost mode
+                    console.log("Starting boost mode!");
+                    this.isBoosted = true;
+                    this.isChargeBoosting = false;
+                    this.chargeLevel = 0;
+                    this.boostTimer = this.boostDuration;
+                    this.initialBoostApplied = false;
+                    
+                    // Apply initial velocity boost if moving
+                    if (Math.abs(this.sprite.body.velocity.x) > 10) {
+                        this.sprite.setVelocityX(this.sprite.body.velocity.x * this.boostVelocityMultiplier);
+                        this.initialBoostApplied = true;
                     }
+                    
+                    // Visual feedback
+                    this.updatePlayerColor(0x00ff00); // Green for boost
+                }
+                
+                // Check for ground slide: boost + direction + down
+                if (this.isBoosted && downPressed && this.isGrounded && (leftPressed || rightPressed)) {
+                    console.log("Performing ground slide!");
+                    this.performGroundSlide();
+                }
+                
+                // Handle charge boost release
+                if (this.isChargeBoosting && !boostHeld) {
+                    // Release charge boost
+                    console.log("Releasing charge boost! Level:", Math.round(this.chargeLevel));
+                    this.isChargeBoosting = false;
+                    this.isBoosted = false;
+                    this.chargeLevel = 0;
                 }
             }
             
@@ -318,12 +535,38 @@
                 const leftPressed = this.cursors.left.isDown || this.keys.A.isDown;
                 const rightPressed = this.cursors.right.isDown || this.keys.D.isDown;
                 
+                // Don't override horizontal velocity during boost jumps
+                if (this.isBoostJumping) {
+                    console.log("Skipping horizontal movement - boost jump in progress!");
+                    return;
+                }
+                
+                // Apply charge boost speed multiplier
+                let speedMultiplier = 1.0;
+                if (this.isChargeBoosting) {
+                    speedMultiplier = this.chargeBoostSpeedMultiplier;
+                }
+                
                 if (leftPressed) {
-                    this.sprite.setVelocityX(-this.walkSpeed);
+                    // Apply boost multiplier if boosted and initial boost not applied yet
+                    let speed = this.walkSpeed * speedMultiplier;
+                    if (this.isBoosted && !this.initialBoostApplied) {
+                        speed *= this.boostVelocityMultiplier;
+                        this.initialBoostApplied = true;
+                    }
+                    
+                    this.sprite.setVelocityX(-speed);
                     this.facingRight = false;
                     this.sprite.setFlipX(true);
                 } else if (rightPressed) {
-                    this.sprite.setVelocityX(this.walkSpeed);
+                    // Apply boost multiplier if boosted and initial boost not applied yet
+                    let speed = this.walkSpeed * speedMultiplier;
+                    if (this.isBoosted && !this.initialBoostApplied) {
+                        speed *= this.boostVelocityMultiplier;
+                        this.initialBoostApplied = true;
+                    }
+                    
+                    this.sprite.setVelocityX(speed);
                     this.facingRight = true;
                     this.sprite.setFlipX(false);
                 } else {
@@ -342,38 +585,63 @@
                                    Phaser.Input.Keyboard.JustDown(this.keys.SPACE);
                 
                 if (jumpPressed) {
+                    console.log("Jump pressed! isGrounded:", this.isGrounded, "isBoosted:", this.isBoosted, "isChargeBoosting:", this.isChargeBoosting, "chargeLevel:", Math.round(this.chargeLevel));
                     if (this.isGrounded) {
-                        // Regular jump
-                        const jumpPower = this.isBoosted ? this.boostedJumpVelocity : this.jumpVelocity;
-                        this.sprite.setVelocityY(-jumpPower);
+                        let jumpPower = this.jumpVelocity;
+                        let horizontalForce = 0;
                         
-                        // Check if this is a boosted jump before consuming boost
-                        const wasBoosted = this.isBoosted;
-                        
-                        // Add horizontal boost if boosted
-                        if (this.isBoosted) {
-                            const horizontalDirection = this.facingRight ? 1 : -1;
-                            this.sprite.setVelocityX(this.sprite.body.velocity.x + (this.boostedJumpHorizontal * horizontalDirection));
+                        if (this.isChargeBoosting) {
+                            // Charge jump - straight up with power based on charge level
+                            jumpPower = this.chargeJumpBaseVelocity + (this.chargeLevel * this.chargeJumpMultiplier);
+                            horizontalForce = 0; // No horizontal movement for charge jump
+                            this.isChargeJumping = true;
+                            console.log("Performing charge jump! Power:", jumpPower, "Charge level:", Math.round(this.chargeLevel));
                             
-                            // Mark as boost jumping
-                            this.isBoostJumping = true;
-                            
-                            // Consume boost
+                            // Consume charge boost
+                            this.isChargeBoosting = false;
                             this.isBoosted = false;
-                            this.boostTimer = 0;
-                        } else {
-                            // Mark as normal jumping
-                            this.isBoostJumping = false;
+                            this.chargeLevel = 0;
+                            
+                        } else if (this.isBoosted && this.boostChains < this.maxBoostChains) {
+                            // Boosted jump - good horizontal movement
+                            jumpPower = this.boostedJumpVelocity;
+                            horizontalForce = this.boostedJumpHorizontal;
+                            this.isBoostJumping = true;
+                            console.log("Performing boosted jump!");
+
+                            // Consume one chain
+                            this.boostChains++;
+
+                            // If we've used all chains, consume boost
+                            if (this.boostChains >= this.maxBoostChains) {
+                                this.isBoosted = false;
+                                this.boostTimer = 0;
+                                this.boostChains = 0;
+                            }
                         }
-                        
-                        // Visual feedback is now handled by state-based system in updateVisuals()
+
+                        // Apply jump power
+                        this.sprite.setVelocityY(-jumpPower);
+
+                        // Apply horizontal force if any
+                        if (horizontalForce > 0) {
+                            const horizontalDirection = this.facingRight ? 1 : -1;
+                            const oldVelocityX = this.sprite.body.velocity.x;
+                            const newVelocityX = oldVelocityX + (horizontalForce * horizontalDirection);
+                            console.log("🚀 HORIZONTAL BOOST APPLIED! 🚀 Old velocity:", oldVelocityX, "Horizontal force:", horizontalForce, "Direction:", horizontalDirection, "New velocity:", newVelocityX);
+                            this.sprite.setVelocityX(newVelocityX);
+                            
+                            // Make character flash bright white to show horizontal boost
+                            this.sprite.setTint(0xffffff);
+                            this.scene.time.delayedCall(100, () => {
+                                this.sprite.clearTint();
+                            });
+                        }
                         
                     } else if (document.getElementById('doubleJumpEnabled').checked && this.canDoubleJump) {
                         // Double jump
                         this.sprite.setVelocityY(-this.jumpVelocity * 1.1);
                         this.canDoubleJump = false;
-                        
-                        // Visual feedback is now handled by state-based system in updateVisuals()
                     }
                 }
             }
@@ -391,10 +659,16 @@
                 this.canDash = false;
                 this.lastDashTime = this.scene.time.now;
                 
-                // Consume boost
+                // Consume boost chain
                 if (this.isBoosted) {
-                    this.isBoosted = false;
-                    this.boostTimer = 0;
+                    this.boostChains++;
+                    
+                    // If we've used all chains, consume the boost
+                    if (this.boostChains >= this.maxBoostChains) {
+                        this.isBoosted = false;
+                        this.boostTimer = 0;
+                        this.boostChains = 0;
+                    }
                 }
                 
                 // Visual feedback
@@ -403,19 +677,33 @@
             
             performGroundSlide() {
                 const direction = this.facingRight ? 1 : -1;
-                const slideSpeed = this.boostedDashSpeed * 0.8; // Slightly slower than dash
+                const slideSpeed = this.boostedDashSpeed * 0.5; // Much slower than dash
                 
                 this.sprite.setVelocityX(slideSpeed * direction);
                 this.sprite.setVelocityY(0);
                 
                 this.isDashing = true;
-                this.dashTimer = this.dashDuration * 1.5; // Longer duration for slide
+                this.dashTimer = this.dashDuration * 3; // Much longer duration for slide
                 this.canDash = false;
                 this.lastDashTime = this.scene.time.now;
                 
-                // Consume boost
-                this.isBoosted = false;
-                this.boostTimer = 0;
+                // Instantly snap to slide size and body
+                this.sprite.setScale(this.slideScaleX, this.slideScaleY);
+                this.currentScaleX = this.slideScaleX;
+                this.currentScaleY = this.slideScaleY;
+                this.targetScaleX = this.slideScaleX;
+                this.targetScaleY = this.slideScaleY;
+                this.applyBodySize('slide');
+                
+                // Consume boost chain
+                this.boostChains++;
+                
+                // If we've used all chains, consume the boost
+                if (this.boostChains >= this.maxBoostChains) {
+                    this.isBoosted = false;
+                    this.boostTimer = 0;
+                    this.boostChains = 0;
+                }
                 
                 // Visual feedback
                 this.updatePlayerColor(0xff8800); // Orange for ground slide
@@ -450,10 +738,19 @@
                     return;
                 }
                 
+                // Long jump lock removed - no special visual feedback needed
+                
                 // State-based color system (priority order matters!)
-                if (this.isBoostJumping) {
+                if (this.isChargeJumping) {
+                    // Charge jumping - red
+                    this.updatePlayerColor(0xff0000);
+                } else if (this.isBoostJumping) {
                     // Boost jumping - orange
                     this.updatePlayerColor(0xff8800);
+                } else if (this.isChargeBoosting) {
+                    // Charge boosting - red to orange gradient based on charge level
+                    const intensity = Math.floor((this.chargeLevel / this.maxChargeLevel) * 255);
+                    this.updatePlayerColor(0xff0000 + (intensity << 8)); // Red to orange gradient
                 } else if (this.isBoosted && this.isGrounded) {
                     // Boost ready on ground - bright green
                     this.updatePlayerColor(0x00ff00);
@@ -497,15 +794,253 @@
                 }
             }
             
+            initializeForceVisualization() {
+                // Create force block graphics
+                this.forceBlock = this.scene.add.graphics();
+                this.forceBlock.setDepth(1000); // Render on top
+            }
+            
+            updateForceVisualization() {
+                if (!this.forceBlock) return;
+                
+                const velocity = this.sprite.body.velocity;
+                const playerX = this.sprite.x;
+                // Adjust Y position to account for bottom origin - force should come from visual center
+                const playerY = this.sprite.y - (this.sprite.height * this.currentScaleY * 0.5);
+                
+                // Calculate force magnitude and direction
+                const forceMagnitude = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+                const maxForce = 800; // Maximum expected force for scaling
+                const normalizedForce = Math.min(forceMagnitude / maxForce, 1);
+                
+                // Calculate force block size (minimum 8x8, maximum 64x64)
+                const minSize = 8;
+                const maxSize = 64;
+                const blockSize = minSize + (normalizedForce * (maxSize - minSize));
+                
+                // Calculate force block position (offset from player based on velocity direction)
+                const offsetMultiplier = 0.3; // How far the block moves from player
+                const forceX = playerX + (velocity.x * offsetMultiplier);
+                const forceY = playerY + (velocity.y * offsetMultiplier);
+                
+                // Clear previous graphics
+                this.forceBlock.clear();
+                
+                // Draw force block with color based on force type
+                let forceColor = 0x00ff00; // Default green
+                let alpha = 0.7;
+                
+                if (this.isDashing) {
+                    forceColor = 0xff0000; // Red for dash
+                    alpha = 0.9;
+                } else if (this.isLongJumping) {
+                    forceColor = 0xff00ff; // Magenta for long jump
+                    alpha = 0.8;
+                } else if (this.isHighJumping) {
+                    forceColor = 0xff8800; // Orange for high jump
+                    alpha = 0.8;
+                } else if (!this.isGrounded && velocity.y < -50) {
+                    forceColor = 0xffff00; // Yellow for upward momentum
+                    alpha = 0.7;
+                } else if (!this.isGrounded && velocity.y > 50) {
+                    forceColor = 0x0088ff; // Blue for downward momentum
+                    alpha = 0.7;
+                } else if (Math.abs(velocity.x) > 50) {
+                    forceColor = 0x00ff88; // Light green for horizontal movement
+                    alpha = 0.6;
+                }
+                
+                // Draw main force block
+                this.forceBlock.fillStyle(forceColor, alpha);
+                this.forceBlock.fillRect(
+                    forceX - blockSize/2, 
+                    forceY - blockSize/2, 
+                    blockSize, 
+                    blockSize
+                );
+                
+                // Draw outline
+                this.forceBlock.lineStyle(2, 0xffffff, 0.8);
+                this.forceBlock.strokeRect(
+                    forceX - blockSize/2, 
+                    forceY - blockSize/2, 
+                    blockSize, 
+                    blockSize
+                );
+                
+                // Draw velocity arrow from player to force block
+                this.forceBlock.lineStyle(3, 0xffffff, 0.6);
+                this.forceBlock.beginPath();
+                this.forceBlock.moveTo(playerX, playerY);
+                this.forceBlock.lineTo(forceX, forceY);
+                this.forceBlock.strokePath();
+                
+                // Draw impact visualization if recently collided
+                if (this.impactTimer > 0) {
+                    this.drawImpactVisualization(playerX, playerY);
+                }
+                
+                // Store force history for trail effect
+                this.forceHistory.push({
+                    x: forceX,
+                    y: forceY,
+                    size: blockSize,
+                    color: forceColor,
+                    time: this.scene.time.now
+                });
+                
+                // Remove old history entries
+                this.forceHistory = this.forceHistory.filter(entry => 
+                    this.scene.time.now - entry.time < 500
+                );
+                
+                // Draw force trail
+                this.drawForceTrail();
+            }
+            
+            drawImpactVisualization(playerX, playerY) {
+                const impactSize = 20 + (this.impactTimer / this.impactDuration) * 30;
+                const impactAlpha = (this.impactTimer / this.impactDuration) * 0.8;
+                
+                // Draw impact ring at visual center
+                this.forceBlock.lineStyle(4, 0xff4444, impactAlpha);
+                this.forceBlock.strokeCircle(playerX, playerY, impactSize);
+                
+                // Draw impact force direction
+                if (this.lastCollisionForce.x !== 0 || this.lastCollisionForce.y !== 0) {
+                    const impactX = playerX + this.lastCollisionForce.x * 0.5;
+                    const impactY = playerY + this.lastCollisionForce.y * 0.5;
+                    
+                    this.forceBlock.lineStyle(6, 0xff0000, impactAlpha);
+                    this.forceBlock.beginPath();
+                    this.forceBlock.moveTo(playerX, playerY);
+                    this.forceBlock.lineTo(impactX, impactY);
+                    this.forceBlock.strokePath();
+                }
+            }
+            
+            drawForceTrail() {
+                // Draw fading trail of previous force positions
+                for (let i = 0; i < this.forceHistory.length - 1; i++) {
+                    const entry = this.forceHistory[i];
+                    const age = this.scene.time.now - entry.time;
+                    const trailAlpha = (1 - age / 500) * 0.3;
+                    
+                    if (trailAlpha > 0) {
+                        this.forceBlock.fillStyle(entry.color, trailAlpha);
+                        this.forceBlock.fillRect(
+                            entry.x - entry.size/4, 
+                            entry.y - entry.size/4, 
+                            entry.size/2, 
+                            entry.size/2
+                        );
+                    }
+                }
+            }
+            
+            recordCollision(collisionForce) {
+                this.lastCollisionForce = collisionForce;
+                this.impactTimer = this.impactDuration;
+            }
+            
+            updateSizeTransition() {
+                // Smoothly transition between sizes
+                let needsUpdate = false;
+                
+                // Use faster transition speed when going to slide size
+                const transitionSpeed = (this.targetScaleY === this.slideScaleY) ? this.slideTransitionSpeed : this.sizeTransitionSpeed;
+                
+                if (Math.abs(this.currentScaleX - this.targetScaleX) > 0.01) {
+                    this.currentScaleX += (this.targetScaleX - this.currentScaleX) * transitionSpeed;
+                    needsUpdate = true;
+                }
+                
+                if (Math.abs(this.currentScaleY - this.targetScaleY) > 0.01) {
+                    this.currentScaleY += (this.targetScaleY - this.currentScaleY) * transitionSpeed;
+                    needsUpdate = true;
+                }
+                
+                if (needsUpdate) {
+                    this.sprite.setScale(this.currentScaleX, this.currentScaleY);
+                }
+            }
+            
+            setTargetSize(scaleX, scaleY) {
+                this.targetScaleX = scaleX;
+                this.targetScaleY = scaleY;
+            }
+            
+            applyBodySize(mode) {
+                if (mode === 'slide') {
+                    // Match visual: half height, keep feet anchored
+                    this.sprite.body.setSize(28, 16);
+                    this.sprite.body.setOffset(2, 16); // 32 - 16
+                } else {
+                    // Normal size
+                    this.sprite.body.setSize(28, 32);
+                    this.sprite.body.setOffset(2, 0);
+                }
+            }
+            
+            checkSlideMode() {
+                // Check if player is sliding and can fit under obstacles
+                if (this.isDashing && this.isGrounded && this.currentScaleY <= this.slideScaleY) {
+                    // Check if there's an obstacle above the player
+                    const playerTop = this.sprite.y - (this.sprite.height * this.currentScaleY);
+                    const obstacleCheckY = playerTop - 20; // Check 20 pixels above
+                    
+                    // Create a temporary rectangle to check for collisions
+                    const checkRect = new Phaser.Geom.Rectangle(
+                        this.sprite.x - 16, obstacleCheckY, 32, 20
+                    );
+                    
+                    // Check if any platforms or walls overlap with this rectangle
+                    let hasObstacleAbove = false;
+                    
+                    // Check platforms
+                    this.scene.level.platforms.children.entries.forEach(platform => {
+                        if (Phaser.Geom.Rectangle.Overlaps(checkRect, platform.getBounds())) {
+                            hasObstacleAbove = true;
+                        }
+                    });
+                    
+                    // Check walls
+                    this.scene.level.walls.children.entries.forEach(wall => {
+                        if (Phaser.Geom.Rectangle.Overlaps(checkRect, wall.getBounds())) {
+                            hasObstacleAbove = true;
+                        }
+                    });
+                    
+                    if (hasObstacleAbove) {
+                        // Enter slide mode - maintain constant velocity
+                        this.isInSlideMode = true;
+                        const direction = this.facingRight ? 1 : -1;
+                        this.sprite.setVelocityX(this.slideModeVelocity * direction);
+                    }
+                } else {
+                    this.isInSlideMode = false;
+                }
+            }
+            
             updateDebugDisplay() {
                 // Update status displays
-                document.getElementById('boostStatus').textContent = 
-                    this.isBoosted ? `Boost: Active (${Math.ceil(this.boostTimer)}ms)` : 'Boost: Ready';
+                let boostStatusText = 'Boost: Ready';
+                if (this.isChargeBoosting) {
+                    boostStatusText = `Charge Boost: ${Math.round(this.chargeLevel)}%`;
+                } else if (this.isBoosted) {
+                    boostStatusText = `Boost: Active (${Math.ceil(this.boostTimer)}ms) [${this.boostChains}/${this.maxBoostChains}]`;
+                }
+                document.getElementById('boostStatus').textContent = boostStatusText;
                 document.getElementById('boostStatus').className = 
                     this.isBoosted ? 'status boost-active' : 'status';
                 
-                document.getElementById('dashStatus').textContent = 
-                    this.canDash ? 'Dash: Ready (Shift while boosted)' : `Dash: Cooldown (${Math.ceil((this.dashCooldown - (this.scene.time.now - this.lastDashTime)) / 1000)}s)`;
+                let dashStatusText = 'Dash: Ready (Ground: Shift+Down)';
+                if (!this.canDash) {
+                    dashStatusText = `Dash: Cooldown (${Math.ceil((this.dashCooldown - (this.scene.time.now - this.lastDashTime)) / 1000)}s)`;
+                } else if (this.dashCoyoteTimer > 0) {
+                    dashStatusText = `Dash: Coyote (${Math.ceil(this.dashCoyoteTimer)}ms)`;
+                }
+                document.getElementById('dashStatus').textContent = dashStatusText;
                 document.getElementById('dashStatus').className = 
                     this.canDash ? 'status dash-ready' : 'status';
                 
@@ -515,9 +1050,18 @@
                 // Update character state
                 let characterState = 'Idle';
                 if (this.isDashing) {
-                    characterState = 'Dashing';
+                    // Check if it's a ground slide or air dash
+                    characterState = this.isGrounded ? 'Ground Sliding' : 'Dashing';
+                } else if (this.isInSlideMode) {
+                    characterState = 'Slide Mode';
                 } else if (!this.isGrounded) {
-                    characterState = this.isBoostJumping ? 'Boost Jumping' : 'Jumping';
+                    if (this.isChargeJumping) {
+                        characterState = 'Charge Jumping';
+                    } else if (this.isBoostJumping) {
+                        characterState = 'Boost Jumping';
+                    } else {
+                        characterState = 'Jumping';
+                    }
                 } else if (Math.abs(this.sprite.body.velocity.x) > 10) {
                     characterState = 'Walking';
                 }
@@ -534,6 +1078,37 @@
                     `${Math.round(this.sprite.x)}, ${Math.round(this.sprite.y)}`;
                 document.getElementById('facing').textContent = 
                     this.facingRight ? 'Right' : 'Left';
+                
+                // Update debug checklist
+                this.updateDebugChecklist();
+            }
+            
+            updateDebugChecklist() {
+                // Update checkmarks based on current states
+                document.getElementById('check-boost').textContent = this.isBoosted ? '☑' : '☐';
+                document.getElementById('check-boost').className = this.isBoosted ? 'checkmark checked' : 'checkmark';
+                
+                document.getElementById('check-charge-boost').textContent = this.isChargeBoosting ? '☑' : '☐';
+                document.getElementById('check-charge-boost').className = this.isChargeBoosting ? 'checkmark checked' : 'checkmark';
+                
+                document.getElementById('check-boost-jumping').textContent = this.isBoostJumping ? '☑' : '☐';
+                document.getElementById('check-boost-jumping').className = this.isBoostJumping ? 'checkmark checked' : 'checkmark';
+                
+                document.getElementById('check-charge-jumping').textContent = this.isChargeJumping ? '☑' : '☐';
+                document.getElementById('check-charge-jumping').className = this.isChargeJumping ? 'checkmark checked' : 'checkmark';
+                
+                document.getElementById('check-dash').textContent = this.isDashing ? '☑' : '☐';
+                document.getElementById('check-dash').className = this.isDashing ? 'checkmark checked' : 'checkmark';
+                
+                document.getElementById('check-ground-slide').textContent = (this.isDashing && this.isGrounded) ? '☑' : '☐';
+                document.getElementById('check-ground-slide').className = (this.isDashing && this.isGrounded) ? 'checkmark checked' : 'checkmark';
+                
+                // Update boost timer and chains display
+                document.getElementById('boost-timer-value').textContent = this.isBoosted ? Math.ceil(this.boostTimer) : 0;
+                document.getElementById('charge-level-value').textContent = Math.round(this.chargeLevel);
+                document.getElementById('boost-chains-value').textContent = this.boostChains;
+                document.getElementById('max-boost-chains-value').textContent = this.maxBoostChains;
+                document.getElementById('horizontal-velocity').textContent = Math.round(this.sprite.body.velocity.x);
             }
         }
 
@@ -623,9 +1198,13 @@
                 // Create player
                 this.player = new SimpleCharacterController(this, 200, 700);
                 
-                // Set up collisions
-                this.physics.add.collider(this.player.sprite, this.level.platforms);
-                this.physics.add.collider(this.player.sprite, this.level.walls);
+                // Set up collisions with impact detection
+                this.physics.add.collider(this.player.sprite, this.level.platforms, (player, platform) => {
+                    this.handleCollision(player, platform);
+                });
+                this.physics.add.collider(this.player.sprite, this.level.walls, (player, wall) => {
+                    this.handleCollision(player, wall);
+                });
                 
                 // Camera follows player
                 this.cameras.main.startFollow(this.player.sprite);
@@ -638,6 +1217,18 @@
                 }).setScrollFactor(0);
             }
 
+            handleCollision(player, obstacle) {
+                // Calculate collision force based on velocity
+                const velocity = player.body.velocity;
+                const collisionForce = {
+                    x: velocity.x * 0.5, // Reduce force for visualization
+                    y: velocity.y * 0.5
+                };
+                
+                // Record collision for force visualization
+                this.player.recordCollision(collisionForce);
+            }
+            
             update() {
                 this.player.update();
             }

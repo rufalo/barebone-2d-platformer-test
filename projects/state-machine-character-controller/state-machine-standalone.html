@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>State Machine Character Controller - Standalone</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #2c3e50;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            height: 100vh;
+        }
+        
+        .left-panel {
+            width: 300px;
+            background: #34495e;
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 2px solid #2c3e50;
+        }
+        
+        .game-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        canvas {
+            border: 3px solid #3498db;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            margin: 0 0 20px 0;
+            text-align: center;
+            color: #3498db;
+            font-size: 24px;
+        }
+        
+        .info {
+            background: #34495e;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .controls {
+            background: #27ae60;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+        
+        .features {
+            background: #8e44ad;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        
+        .controls h3, .features h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        
+        .controls p, .features ul {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        
+        .features ul {
+            padding-left: 20px;
+        }
+        
+        .features li {
+            margin: 3px 0;
+        }
+        
+        .debug-info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.4;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="left-panel">
+        <h1>State Machine Character Controller</h1>
+        
+        <div class="controls">
+            <h3>🎮 Controls</h3>
+            <p><strong>Movement:</strong> Arrow Keys</p>
+            <p><strong>Jump:</strong> Spacebar</p>
+            <p><strong>Boost/Charge:</strong> Shift (hold for charge)</p>
+            <p><strong>Ground Slide:</strong> Boost + Direction + Down</p>
+        </div>
+        
+        <div class="features">
+            <h3>✨ Features</h3>
+            <ul>
+                <li><strong>Data-driven:</strong> All abilities configurable</li>
+                <li><strong>State machines:</strong> Clean separation of state logic</li>
+                <li><strong>Modifiers system:</strong> Easy upgrades and buffs</li>
+                <li><strong>Input buffering:</strong> Jump buffer for responsive controls</li>
+                <li><strong>Visual feedback:</strong> Color changes show current state</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="game-area">
+        <!-- Game canvas will be inserted here by Phaser -->
+    </div>
+
+    <!-- Phaser.js -->
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    
+    <!-- State Machine System - All in one file to avoid CORS issues -->
+    <script>
+        // ============================================================================
+        // PLAYER CONFIGURATION - DATA-DRIVEN ABILITY SYSTEM
+        // ============================================================================
+        const PlayerConfig = {
+          abilities: {
+            move: {
+              speed: { base: 160 },
+              airControl: { base: 1.0 },
+            },
+            boost: {
+              speed: { base: 320 },
+              durationMs: { base: 400 },
+              canBufferInAir: true,
+            },
+            charge: {
+              speed: { base: 128 },
+              durationMs: { base: 600 },
+            },
+            slide: {
+              speed: { base: 300 },
+              durationMs: { base: 1000 },
+              cancels: ["OppositeDirection", "Airborne", "Timeout"],
+              scaleY: 0.5,
+            },
+            jump: {
+              normal: {
+                vy: { base: -500 },
+                addHorizontal: false,
+              },
+              boost: {
+                vy: { base: -550 },
+                vx: { base: 320 },
+                airControlDuring: true,
+              },
+              charge: {
+                vy: { base: -800 },
+                vx: { base: 0 },
+                requiresFullCharge: true,
+              }
+            },
+            physics: {
+              gravityY: 1200,
+              bounce: 0.05,
+            },
+            colors: {
+              normal: 0x3498db,
+              boostActive: 0xff6b6b,
+              chargeBoosting: 0xfeca57,
+              chargeReady: 0xff8c00,
+              boostJump: 0xffff00,
+              chargeJump: 0x00ff00,
+              slide: 0x54a0ff,
+            }
+          },
+          featureFlags: {
+            canBoost: true,
+            canCharge: true,
+            canSlide: true,
+            canBoostJump: true,
+            canChargeJump: true,
+          }
+        };
+
+        // ============================================================================
+        // PLAYER STATE ENUMS
+        // ============================================================================
+        const MovementState = Object.freeze({
+          GROUNDED: "grounded",
+          AIRBORNE: "airborne", 
+          SUBMERGED: "submerged",
+        });
+
+        const ActionState = Object.freeze({
+          IDLE: "idle",
+          RUNNING: "running",
+          JUMPING: "jumping",
+          BOOST_JUMPING: "boost-jumping",
+          CHARGE_JUMPING: "charge-jumping",
+          SLIDING: "ground-sliding",
+        });
+
+        const BoostState = Object.freeze({
+          IDLE: "boost-idle",
+          ARMED: "boost-on",
+          ACTIVE: "boosting",
+        });
+
+        const ChargeState = Object.freeze({
+          IDLE: "idle",
+          CHARGING: "charging",
+          FULL: "charge-full",
+        });
+
+        // ============================================================================
+        // FINITE STATE MACHINE SYSTEM
+        // ============================================================================
+        class TimedFlag {
+          constructor(ms = 0) { 
+            this.remaining = ms; 
+          }
+          
+          start(ms) { 
+            this.remaining = ms; 
+          }
+          
+          tick(dt) { 
+            if (this.remaining > 0) {
+              this.remaining = Math.max(0, this.remaining - dt); 
+            }
+          }
+          
+          get active() { 
+            return this.remaining > 0; 
+          }
+          
+          stop() { 
+            this.remaining = 0; 
+          }
+        }
+
+        class StateMachine {
+          constructor(initial) {
+            this.state = initial;
+            this._onEnter = new Map();
+            this._onExit = new Map();
+          }
+          
+          onEnter(stateName, callback) { 
+            this._onEnter.set(stateName, callback); 
+            return this; 
+          }
+          
+          onExit(stateName, callback) { 
+            this._onExit.set(stateName, callback); 
+            return this; 
+          }
+
+          tryTransition(to, guardFn = null, context = null) {
+            if (to === this.state) return false;
+            if (guardFn && !guardFn(context)) return false;
+            
+            const from = this.state;
+            
+            if (this._onExit.has(from)) {
+              this._onExit.get(from)(from, to, context);
+            }
+            
+            this.state = to;
+            
+            if (this._onEnter.has(to)) {
+              this._onEnter.get(to)(from, to, context);
+            }
+            
+            return true;
+          }
+        }
+
+        // ============================================================================
+        // MODIFIERS SYSTEM
+        // ============================================================================
+        class Modifiers {
+          constructor() { 
+            this.mods = []; 
+          }
+          
+          add(mod) { 
+            this.mods.push(mod); 
+          }
+          
+          remove(key) {
+            this.mods = this.mods.filter(mod => mod.key !== key);
+          }
+          
+          eval(base, key) {
+            let value = base;
+            
+            for (const mod of this.mods) {
+              if (!mod.enabled || mod.key !== key) continue;
+              
+              switch (mod.op) {
+                case "mul":
+                  value *= mod.value;
+                  break;
+                case "add":
+                  value += mod.value;
+                  break;
+                case "set":
+                  value = mod.value;
+                  break;
+              }
+            }
+            
+            return value;
+          }
+          
+          getModifiers(key) {
+            return this.mods.filter(mod => mod.key === key);
+          }
+        }
+
+        // ============================================================================
+        // PLAYER MODEL
+        // ============================================================================
+        class PlayerModel {
+          constructor(sprite) {
+            this.sprite = sprite;
+            this.cfg = PlayerConfig;
+            this.mods = new Modifiers();
+
+            this.input = { 
+              left: false, 
+              right: false, 
+              up: false, 
+              down: false, 
+              jump: false, 
+              boost: false, 
+              jumpPressed: false, 
+              boostPressed: false 
+            };
+            
+            this.movement = new StateMachine(MovementState.GROUNDED);
+            this.action = new StateMachine(ActionState.IDLE);
+            this.boost = new StateMachine(BoostState.IDLE);
+            this.charge = new StateMachine(ChargeState.IDLE);
+
+            this.boostWindow = new TimedFlag(0);
+            this.boostActive = new TimedFlag(0);
+            this.slideTimer = new TimedFlag(0);
+            this.chargeTime = 0;
+            this.jumpBuffer = new TimedFlag(0);
+
+            this.slideDir = 0;
+            this.boostActionConsumed = false;
+          }
+
+          num(path, key) {
+            const base = path.base;
+            return this.mods.eval(base, key);
+          }
+
+          get canBoost() { return this.cfg.featureFlags.canBoost; }
+          get canCharge() { return this.cfg.featureFlags.canCharge; }
+          get canSlide() { return this.cfg.featureFlags.canSlide; }
+          get canBoostJump() { return this.cfg.featureFlags.canBoostJump; }
+          get canChargeJump() { return this.cfg.featureFlags.canChargeJump; }
+          
+          getCurrentSpeedMultiplier() {
+            const normalSpeed = this.num(this.cfg.abilities.move.speed, "move.speed");
+            
+            if (this.boost.state === BoostState.ACTIVE) {
+              return this.num(this.cfg.abilities.boost.speed, "boost.speed") / normalSpeed;
+            } else if (this.charge.state === ChargeState.CHARGING) {
+              return this.num(this.cfg.abilities.charge.speed, "charge.speed") / normalSpeed;
+            } else if (this.action.state === ActionState.SLIDING) {
+              return this.num(this.cfg.abilities.slide.speed, "slide.speed") / normalSpeed;
+            } else if (this.action.state === ActionState.BOOST_JUMPING) {
+              return this.num(this.cfg.abilities.boost.speed, "boost.speed") / normalSpeed;
+            }
+            
+            return 1.0;
+          }
+          
+          getChargePercentage() {
+            if (this.charge.state === ChargeState.CHARGING) {
+              const maxCharge = this.num(this.cfg.abilities.charge.durationMs, "charge.durationMs");
+              return Math.round((this.chargeTime / maxCharge) * 100);
+            } else if (this.charge.state === ChargeState.FULL) {
+              return 100;
+            }
+            return 0;
+          }
+        }
+
+        // ============================================================================
+        // PLAYER CONTROLLER
+        // ============================================================================
+        class PlayerController {
+          constructor(scene, model) {
+            this.scene = scene;
+            this.m = model;
+            this.body = model.sprite.body;
+
+            this._wireVisuals();
+          }
+
+          _wireVisuals() {
+            const colors = this.m.cfg.abilities.colors;
+            
+            this.m.action
+              .onEnter(ActionState.SLIDING, () => {
+                this.m.sprite.setTint(colors.slide);
+                this.m.sprite.setScale(1, this.m.cfg.abilities.slide.scaleY);
+              })
+              .onExit(ActionState.SLIDING, () => {
+                this.m.sprite.setScale(1, 1);
+                this.m.sprite.setTint(colors.normal);
+              })
+              .onEnter(ActionState.BOOST_JUMPING, () => {
+                this.m.sprite.setTint(colors.boostJump);
+              })
+              .onExit(ActionState.BOOST_JUMPING, () => {
+                this.m.sprite.setTint(colors.normal);
+              })
+              .onEnter(ActionState.CHARGE_JUMPING, () => {
+                this.m.sprite.setTint(colors.chargeJump);
+              })
+              .onExit(ActionState.CHARGE_JUMPING, () => {
+                this.m.sprite.setTint(colors.normal);
+              });
+
+            this.m.boost
+              .onEnter(BoostState.ACTIVE, () => this.m.sprite.setTint(colors.boostActive))
+              .onExit(BoostState.ACTIVE, () => {
+                if (!this._isInSpecialActionState()) {
+                  this.m.sprite.setTint(colors.normal);
+                }
+              });
+
+            this.m.charge
+              .onEnter(ChargeState.CHARGING, () => this.m.sprite.setTint(colors.chargeBoosting))
+              .onEnter(ChargeState.FULL, () => this.m.sprite.setTint(colors.chargeReady))
+              .onExit(ChargeState.CHARGING, () => {
+                if (!this._isInSpecialActionState()) {
+                  this.m.sprite.setTint(colors.normal);
+                }
+              })
+              .onExit(ChargeState.FULL, () => {
+                if (!this._isInSpecialActionState()) {
+                  this.m.sprite.setTint(colors.normal);
+                }
+              });
+          }
+
+          _isInSpecialActionState() {
+            return this.m.action.state === ActionState.SLIDING ||
+                   this.m.action.state === ActionState.BOOST_JUMPING ||
+                   this.m.action.state === ActionState.CHARGE_JUMPING;
+          }
+
+          update(dt) {
+            this._senseMovement();
+            this._updateTimers(dt);
+            this._updateBoostState(dt);
+            this._updateChargeState(dt);
+            this._updateActionState(dt);
+            this._applyMotion(dt);
+          }
+
+          _senseMovement() {
+            const grounded = this.body.blocked.down || this.body.touching.down;
+            const submerged = false;
+            
+            const newState = submerged ? MovementState.SUBMERGED : 
+                            (grounded ? MovementState.GROUNDED : MovementState.AIRBORNE);
+            
+            this.m.movement.tryTransition(newState);
+          }
+
+          _updateTimers(dt) {
+            this.m.boostWindow.tick(dt);
+            this.m.boostActive.tick(dt);
+            this.m.slideTimer.tick(dt);
+            this.m.jumpBuffer.tick(dt);
+          }
+
+          _updateBoostState(dt) {
+            const { boostPressed, boost } = this.m.input;
+
+            if (boostPressed && this.m.canBoost) {
+              if (this.m.boost.state === BoostState.IDLE) {
+                this.m.boost.tryTransition(BoostState.ARMED);
+              }
+            }
+
+            if (this.m.movement.state === MovementState.GROUNDED &&
+                this.m.boost.state === BoostState.ARMED &&
+                this.m.boostActive.remaining === 0) {
+              
+              const duration = this.m.num(this.m.cfg.abilities.boost.durationMs, "boost.durationMs");
+              this.m.boostActive.start(duration);
+              this.m.boost.tryTransition(BoostState.ACTIVE);
+              this.m.boostActionConsumed = false;
+            }
+
+            if (!boost && this.m.boost.state !== BoostState.ACTIVE) {
+              this.m.boost.tryTransition(BoostState.IDLE);
+            }
+
+            if (this.m.boost.state === BoostState.ACTIVE && !this.m.boostActive.active) {
+              this.m.boost.tryTransition(BoostState.IDLE);
+              
+              if (this.m.input.boost && this.m.canCharge && !this.m.boostActionConsumed) {
+                this.m.charge.tryTransition(ChargeState.CHARGING);
+                this.m.chargeTime = 0;
+              }
+            }
+          }
+
+          _updateChargeState(dt) {
+            if (this.m.charge.state === ChargeState.CHARGING) {
+              this.m.chargeTime += dt;
+              const maxCharge = this.m.num(this.m.cfg.abilities.charge.durationMs, "charge.durationMs");
+              
+              if (this.m.chargeTime >= maxCharge) {
+                this.m.charge.tryTransition(ChargeState.FULL);
+              }
+              
+              if (!this.m.input.boost) {
+                this.m.charge.tryTransition(ChargeState.IDLE);
+              }
+              if (this.m.boost.state === BoostState.ACTIVE) {
+                this.m.charge.tryTransition(ChargeState.IDLE);
+              }
+            } else if (this.m.charge.state === ChargeState.FULL) {
+              if (!this.m.input.boost) {
+                this.m.charge.tryTransition(ChargeState.IDLE);
+              }
+            }
+          }
+
+          _updateActionState(dt) {
+            const actionState = this.m.action.state;
+            const movementState = this.m.movement.state;
+
+            // Handle jump input FIRST (before slide logic)
+            const jumpPressed = this.m.input.jumpPressed || this.m.jumpBuffer.active;
+
+            if (movementState === MovementState.GROUNDED && jumpPressed) {
+              if (this.m.canChargeJump && this.m.charge.state === ChargeState.FULL) {
+                this._doChargeJump();
+                return;
+              }
+              if (this.m.canBoostJump && this.m.boost.state === BoostState.ACTIVE) {
+                this._doBoostJump();
+                return;
+              }
+              // Jump from slide should be a boost jump
+              if (this.m.canBoostJump && actionState === ActionState.SLIDING) {
+                this._doBoostJump();
+                return;
+              }
+              this._doNormalJump();
+              return;
+            }
+
+            const canSlide = this.m.canSlide &&
+              movementState === MovementState.GROUNDED &&
+              this.m.boost.state === BoostState.ACTIVE &&
+              (this.m.input.left || this.m.input.right) &&
+              this.m.input.down;
+
+            if (canSlide && actionState !== ActionState.SLIDING) {
+              this._enterSlide();
+              return;
+            }
+
+            if (actionState === ActionState.SLIDING) {
+              const opposite = (this.m.slideDir > 0 && this.m.input.left) ||
+                              (this.m.slideDir < 0 && this.m.input.right);
+              
+              if (!this.m.slideTimer.active || movementState !== MovementState.GROUNDED || opposite) {
+                this.m.action.tryTransition(ActionState.IDLE);
+              }
+              return;
+            }
+
+            // Handle movement states
+            if (movementState === MovementState.GROUNDED) {
+              if (this.m.input.left || this.m.input.right) {
+                this.m.action.tryTransition(ActionState.RUNNING);
+              } else {
+                this.m.action.tryTransition(ActionState.IDLE);
+              }
+            } else {
+              if (actionState !== ActionState.BOOST_JUMPING && actionState !== ActionState.CHARGE_JUMPING) {
+                this.m.action.tryTransition(ActionState.JUMPING);
+              }
+            }
+          }
+
+          _enterSlide() {
+            const duration = this.m.num(this.m.cfg.abilities.slide.durationMs, "slide.durationMs");
+            const speed = this.m.num(this.m.cfg.abilities.slide.speed, "slide.speed");
+            
+            this.m.action.tryTransition(ActionState.SLIDING);
+            this.m.slideTimer.start(duration);
+            this.m.boostActionConsumed = true;
+            
+            this.m.boost.tryTransition(BoostState.IDLE);
+            
+            const direction = this.m.input.left ? -1 : 1;
+            this.m.slideDir = direction;
+            this.body.setVelocityX(speed * direction);
+          }
+
+          _doNormalJump() {
+            const vy = this.m.num(this.m.cfg.abilities.jump.normal.vy, "jump.normal.vy");
+            this.body.setVelocityY(vy);
+            this.m.action.tryTransition(ActionState.JUMPING);
+            this.m.jumpBuffer.stop();
+          }
+
+          _doBoostJump() {
+            const vy = this.m.num(this.m.cfg.abilities.jump.boost.vy, "jump.boost.vy");
+            const vx = this.m.num(this.m.cfg.abilities.jump.boost.vx, "jump.boost.vx");
+            const direction = this.m.input.left ? -1 : (this.m.input.right ? 1 : 0);
+            
+            this.body.setVelocityY(vy);
+            if (direction !== 0) {
+              this.body.setVelocityX(vx * direction);
+            }
+            
+            this.m.action.tryTransition(ActionState.BOOST_JUMPING);
+            this.m.boostActionConsumed = true;
+            this.m.boost.tryTransition(BoostState.IDLE);
+            this.m.jumpBuffer.stop();
+          }
+
+          _doChargeJump() {
+            const vy = this.m.num(this.m.cfg.abilities.jump.charge.vy, "jump.charge.vy");
+            
+            this.body.setVelocityY(vy);
+            this.body.setVelocityX(0);
+            
+            this.m.action.tryTransition(ActionState.CHARGE_JUMPING);
+            this.m.charge.tryTransition(ChargeState.IDLE);
+            this.m.jumpBuffer.stop();
+          }
+
+          _applyMotion(dt) {
+            const movementState = this.m.movement.state;
+            const actionState = this.m.action.state;
+            const boostActive = this.m.boost.state === BoostState.ACTIVE;
+            const charging = this.m.charge.state === ChargeState.CHARGING;
+            
+            const move = this.m.cfg.abilities.move;
+            const boost = this.m.cfg.abilities.boost;
+            const charge = this.m.cfg.abilities.charge;
+
+            let speed = this.m.num(move.speed, "move.speed");
+            if (boostActive) {
+              speed = this.m.num(boost.speed, "boost.speed");
+            } else if (charging) {
+              speed = this.m.num(charge.speed, "charge.speed");
+            }
+
+            if (actionState === ActionState.SLIDING || actionState === ActionState.BOOST_JUMPING) {
+              if (actionState === ActionState.BOOST_JUMPING && 
+                  this.m.cfg.abilities.jump.boost.airControlDuring) {
+                if (this.m.input.left) {
+                  this.body.setVelocityX(-this.m.num(boost.speed, "boost.speed"));
+                } else if (this.m.input.right) {
+                  this.body.setVelocityX(this.m.num(boost.speed, "boost.speed"));
+                }
+              }
+              return;
+            }
+
+            let x = 0;
+            if (this.m.input.left) x -= 1;
+            if (this.m.input.right) x += 1;
+
+            let applied = speed * x;
+            
+            if (movementState === MovementState.AIRBORNE) {
+              const airControl = this.m.num(move.airControl, "move.airControl");
+              applied *= airControl;
+            }
+            
+            this.body.setVelocityX(applied);
+          }
+
+          pressJump() {
+            this.m.input.jumpPressed = true;
+            this.m.input.jump = true;
+            this.m.jumpBuffer.start(75);
+          }
+
+          releaseJump() {
+            this.m.input.jump = false;
+          }
+
+          pressBoost() {
+            this.m.input.boostPressed = true;
+            this.m.input.boost = true;
+          }
+
+          releaseBoost() {
+            this.m.input.boost = false;
+          }
+
+          setAxis(left, right, up, down) {
+            this.m.input.left = left;
+            this.m.input.right = right;
+            this.m.input.up = up;
+            this.m.input.down = down;
+          }
+
+          endFrame() {
+            this.m.input.jumpPressed = false;
+            this.m.input.boostPressed = false;
+          }
+        }
+
+        // ============================================================================
+        // GAME SCENE
+        // ============================================================================
+        class GameScene extends Phaser.Scene {
+            constructor() {
+                super({ key: 'GameScene' });
+            }
+
+            preload() {
+                // Create simple colored rectangles as textures
+                this.add.graphics({ fillStyle: { color: 0x8B4513 } })
+                    .fillRect(0, 0, 32, 32)
+                    .generateTexture('platform', 32, 32);
+                    
+                // White player texture so tints show as pure colors
+                this.add.graphics({ fillStyle: { color: 0xffffff } })
+                    .fillRect(0, 0, 32, 64)
+                    .generateTexture('player', 32, 64);
+            }
+
+            create() {
+                // Create platforms
+                this.platforms = this.physics.add.staticGroup();
+                
+                // Ground
+                const ground = this.platforms.create(400, 550, 'platform');
+                ground.setScale(25, 3).refreshBody(); // 800x96 ground
+                
+                // Platforms
+                this.platforms.create(200, 400, 'platform').setScale(6, 1).refreshBody();
+                this.platforms.create(600, 300, 'platform').setScale(6, 1).refreshBody();
+
+                // Create player
+                this.player = this.physics.add.sprite(100, 450, 'player');
+                this.player.setOrigin(0.5, 1); // Set origin to bottom center
+                this.player.setTint(PlayerConfig.abilities.colors.normal);
+                this.player.setCollideWorldBounds(true);
+                this.player.setBounce(PlayerConfig.abilities.physics.bounce);
+                this.physics.add.collider(this.player, this.platforms);
+
+                // Set up physics
+                this.physics.world.gravity.y = PlayerConfig.abilities.physics.gravityY;
+
+                // Initialize state machine system
+                this.model = new PlayerModel(this.player);
+                this.controller = new PlayerController(this, this.model);
+
+                // Input setup
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+
+                // Debug display - positioned in top-left corner
+                this.debugText = this.add.text(16, 16, '', {
+                    fontSize: '12px',
+                    fill: '#ffffff',
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    padding: { x: 8, y: 6 }
+                });
+
+                // Add some example modifiers to demonstrate the system
+                this._setupExampleModifiers();
+            }
+
+            update(time, delta) {
+                // Map inputs to controller
+                this.controller.setAxis(
+                    this.cursors.left.isDown,
+                    this.cursors.right.isDown,
+                    this.cursors.up.isDown,
+                    this.cursors.down.isDown
+                );
+
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+                    this.controller.pressJump();
+                }
+                if (Phaser.Input.Keyboard.JustUp(this.spaceKey)) {
+                    this.controller.releaseJump();
+                }
+                if (Phaser.Input.Keyboard.JustDown(this.shiftKey)) {
+                    this.controller.pressBoost();
+                }
+                if (Phaser.Input.Keyboard.JustUp(this.shiftKey)) {
+                    this.controller.releaseBoost();
+                }
+
+                // Update controller
+                this.controller.update(delta);
+
+                // Update debug display
+                this._updateDebugText();
+
+                // Clear input flags
+                this.controller.endFrame();
+            }
+
+            _setupExampleModifiers() {
+                // Example: Add a speed boost modifier (uncomment to test)
+                // this.model.mods.add({
+                //     key: "move.speed",
+                //     op: "mul",
+                //     value: 1.5,
+                //     enabled: true
+                // });
+
+                // Example: Disable sliding ability (uncomment to test)
+                // this.model.cfg.featureFlags.canSlide = false;
+            }
+
+            _updateDebugText() {
+                const speedMultiplier = this.model.getCurrentSpeedMultiplier();
+                const chargePercent = this.model.getChargePercentage();
+                
+                this.debugText.setText([
+                    '=== STATE MACHINE CHARACTER CONTROLLER ===',
+                    '',
+                    `Movement: ${this.model.movement.state}`,
+                    `Action: ${this.model.action.state}`,
+                    `Boost: ${this.model.boost.state} (${Math.ceil(this.model.boostActive.remaining)}ms)`,
+                    `Charge: ${this.model.charge.state} (${chargePercent}%)`,
+                    '',
+                    `Speed: ${speedMultiplier.toFixed(1)}x`,
+                    `Position: (${Math.round(this.player.x)}, ${Math.round(this.player.y)})`,
+                    `Velocity: (${Math.round(this.player.body.velocity.x)}, ${Math.round(this.player.body.velocity.y)})`,
+                    '',
+                    '=== FEATURES ===',
+                    `Boost: ${this.model.canBoost ? '✓' : '✗'}`,
+                    `Charge: ${this.model.canCharge ? '✓' : '✗'}`,
+                    `Slide: ${this.model.canSlide ? '✓' : '✗'}`,
+                    `Boost Jump: ${this.model.canBoostJump ? '✓' : '✗'}`,
+                    `Charge Jump: ${this.model.canChargeJump ? '✓' : '✗'}`
+                ]);
+            }
+        }
+
+        // Game configuration
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-area', // Attach to the game-area div
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: PlayerConfig.abilities.physics.gravityY },
+                    debug: false
+                }
+            },
+            scene: GameScene
+        };
+
+        // Start the game
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>
